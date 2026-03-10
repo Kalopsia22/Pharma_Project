@@ -397,6 +397,8 @@ with st.sidebar:
         "🎯 Model Comparison",
     ])
     st.markdown("---")
+    st.caption("📊 Market: 9 charts | 💰 Price: 13 charts | 🧪 Ingredient: 15 charts")
+    st.markdown("---")
     st.markdown(f"""
     <div style='font-size:0.75rem; color:#A9CCE3;'>
     <b>Dataset</b><br>
@@ -474,253 +476,1036 @@ if page == "🏠 Overview":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE: MARKET INTELLIGENCE
 # ══════════════════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE: MARKET INTELLIGENCE  (Module 1 — all charts)
+# ══════════════════════════════════════════════════════════════════════════════
 elif page == "📊 Market Intelligence":
-    st.title("📊 Market Intelligence")
-    tabs = st.tabs(["Market Share", "Portfolio Strategy", "Discontinuation Risk", "Concentration"])
+    st.title("📊 Market Intelligence Dashboard")
+    st.caption("Manufacturer portfolios, competitive landscape, pricing positioning, and market concentration")
 
+    # ── KPIs ──────────────────────────────────────────────────────────────────
+    mfr_agg = df.groupby("manufacturer").agg(
+        products=("product_id","count"),
+        avg_price=("price_inr","mean"),
+        median_price=("price_inr","median"),
+        discontinued=("is_discontinued","sum"),
+        active=("is_discontinued", lambda x:(~x).sum()),
+    ).reset_index()
+    mfr_agg["disc_rate"]      = mfr_agg["discontinued"] / mfr_agg["products"] * 100
+    mfr_agg["market_share"]   = mfr_agg["products"] / mfr_agg["products"].sum() * 100
+    mfr_agg["combo_pct"]      = df.groupby("manufacturer")["is_combo"].mean().values * 100
+    top5_share = mfr_agg.nlargest(5,"products")["market_share"].sum()
+
+    c1,c2,c3,c4,c5,c6 = st.columns(6)
+    with c1: kpi("Total Products",      len(df),                            fmt="{:,}")
+    with c2: kpi("Manufacturers",       df["manufacturer"].nunique(),        fmt="{:,}")
+    with c3: kpi("Median Price ₹",      df["price_inr"].median(),  "gold",   fmt="₹{:.0f}")
+    with c4: kpi("Disc. Rate",          df["is_discontinued"].mean()*100, "warn", fmt="{:.1f}%")
+    with c5: kpi("Top-5 Share",         top5_share,                "warn",   fmt="{:.1f}%")
+    with c6: kpi("Combo Drug Share",    df["is_combo"].mean()*100, "ok",     fmt="{:.1f}%")
+
+    tabs = st.tabs([
+        "Treemap","Top 20 Manufacturers","Portfolio Strategy",
+        "Class Heatmap","Class Leaders","Disc. Risk",
+        "Price by Manufacturer","Avg Price by Class","Concentration Curve"
+    ])
+
+    # ── Tab 0: Treemap ────────────────────────────────────────────────────────
     with tabs[0]:
-        section("Top 20 Manufacturers — Active vs Discontinued")
-        top20 = df.groupby("manufacturer").agg(
-            active=("is_discontinued", lambda x:(~x).sum()),
-            disc=("is_discontinued","sum"),
-            total=("product_id","count")
-        ).reset_index().sort_values("total",ascending=False).head(20)
-        top20["short"]=top20["manufacturer"].str[:30]
-        fig = go.Figure()
-        fig.add_trace(go.Bar(y=top20["short"],x=top20["active"],name="Active",
-            marker_color=OK,orientation="h"))
-        fig.add_trace(go.Bar(y=top20["short"],x=top20["disc"],name="Discontinued",
-            marker_color=WARN,orientation="h"))
-        fig.update_layout(barmode="stack",height=560,template=TEMPLATE,
-                          margin=dict(t=20,b=10),legend=dict(orientation="h",y=1.02))
-        fig.update_xaxes(title="Products"); fig.update_yaxes(title="")
-        st.plotly_chart(fig, use_container_width=True)
-
-    with tabs[1]:
-        section("Portfolio Strategy Map — Products vs Price vs Discontinuation Rate")
-        mfr_s = df.groupby("manufacturer").agg(
-            products=("product_id","count"),
-            avg_price=("price_inr","mean"),
-            disc_rate=("is_discontinued","mean"),
-        ).reset_index()
-        mfr_s = mfr_s[mfr_s["products"]>=10]
-        fig = px.scatter(mfr_s.sample(min(500,len(mfr_s)),random_state=42),
-            x="products",y="avg_price",size="products",color="disc_rate",
-            hover_name="manufacturer",
+        section("Market Share Treemap — Top 30 Manufacturers × Therapeutic Class")
+        top30_names = mfr_agg.nlargest(30,"products")["manufacturer"].tolist()
+        treemap_df = (df[df["manufacturer"].isin(top30_names)]
+            .groupby(["manufacturer","therapeutic_class"]).size().reset_index(name="count"))
+        price_lk = (df[df["manufacturer"].isin(top30_names)]
+            .groupby(["manufacturer","therapeutic_class"])["price_inr"].mean().round(2).reset_index(name="avg_price"))
+        treemap_df = treemap_df.merge(price_lk, on=["manufacturer","therapeutic_class"])
+        fig = px.treemap(treemap_df,
+            path=[px.Constant("Indian Pharma"),"manufacturer","therapeutic_class"],
+            values="count", color="avg_price",
             color_continuous_scale="RdYlGn_r",
-            log_x=True,log_y=True,
-            labels={"products":"Portfolio Size","avg_price":"Avg Price ₹","disc_rate":"Disc. Rate"},
+            hover_data={"avg_price":":.2f"},
             template=TEMPLATE)
-        fig.update_layout(height=500,margin=dict(t=20,b=10))
+        fig.update_traces(textinfo="label+value+percent root",
+            hovertemplate="<b>%{label}</b><br>Products: %{value:,}<br>Avg Price: ₹%{color:.2f}<extra></extra>")
+        fig.update_layout(height=640, margin=dict(t=20,b=10))
         st.plotly_chart(fig, use_container_width=True)
+        insight("Size = product count | Color = avg price (darker red = higher). "
+                "Sun Pharma dominates across antibiotics and analgesics.")
 
-    with tabs[2]:
-        section("Discontinuation Rate by Therapeutic Class")
-        disc_class = df.groupby("therapeutic_class").agg(
-            total=("product_id","count"),
-            disc=("is_discontinued","sum"),
-        ).reset_index()
-        disc_class["disc_rate"] = disc_class["disc"]/disc_class["total"]*100
-        disc_class = disc_class.sort_values("disc_rate",ascending=True)
-        fig = go.Figure(go.Bar(
-            y=disc_class["therapeutic_class"].str.title(),
-            x=disc_class["disc_rate"],orientation="h",
-            marker_color=[WARN if v>5 else GOLD if v>3 else OK for v in disc_class["disc_rate"]],
-            text=[f"{v:.1f}%" for v in disc_class["disc_rate"]],textposition="outside"
-        ))
-        fig.update_layout(height=400,template=TEMPLATE,margin=dict(t=20,r=80),
-                          xaxis_title="Discontinuation Rate (%)",yaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
-
-    with tabs[3]:
-        section("Market Concentration — Cumulative Share (Lorenz Curve)")
-        mfr_cnt = df["manufacturer"].value_counts().reset_index()
-        mfr_cnt.columns = ["manufacturer","count"]
-        mfr_cnt = mfr_cnt.sort_values("count")
-        mfr_cnt["cum_share"] = mfr_cnt["count"].cumsum()/mfr_cnt["count"].sum()*100
-        mfr_cnt["cum_mfr"]   = np.arange(1,len(mfr_cnt)+1)/len(mfr_cnt)*100
+    # ── Tab 1: Top 20 Stacked Bar ─────────────────────────────────────────────
+    with tabs[1]:
+        section("Top 20 Manufacturers — Active vs Discontinued Products")
+        top20 = mfr_agg.nlargest(20,"products").sort_values("products")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=mfr_cnt["cum_mfr"],y=mfr_cnt["cum_share"],
-            mode="lines",line=dict(color=ACCENT,width=2.5),
-            fill="tozeroy",fillcolor=hex_to_rgba(ACCENT,0.15),name="Actual"))
-        fig.add_trace(go.Scatter(x=[0,100],y=[0,100],mode="lines",
-            line=dict(color="grey",dash="dash"),name="Perfect equality"))
-        fig.update_layout(height=420,template=TEMPLATE,margin=dict(t=20),
-                          xaxis_title="Cumulative % of Manufacturers",
-                          yaxis_title="Cumulative % of Products")
+        fig.add_trace(go.Bar(y=top20["manufacturer"], x=top20["active"],
+            name="Active", marker_color=OK, orientation="h",
+            hovertemplate="<b>%{y}</b><br>Active: %{x:,}<extra></extra>"))
+        fig.add_trace(go.Bar(y=top20["manufacturer"], x=top20["discontinued"],
+            name="Discontinued", marker_color=WARN, orientation="h",
+            hovertemplate="<b>%{y}</b><br>Discontinued: %{x:,}<extra></extra>"))
+        for _, row in top20.iterrows():
+            fig.add_annotation(x=row["products"]+30, y=row["manufacturer"],
+                text=f"{row['market_share']:.2f}%", showarrow=False,
+                font=dict(size=9, color="#555"))
+        fig.update_layout(barmode="stack", height=620, template=TEMPLATE,
+            margin=dict(t=20,r=90),
+            legend=dict(orientation="h",y=1.02,x=0.5,xanchor="center"),
+            xaxis_title="Number of Products")
         st.plotly_chart(fig, use_container_width=True)
-        insight("The market is highly fragmented — top 1% of manufacturers control ~20% of products. "
-                "7,648 manufacturers compete, with Sun Pharma leading at ~2,986 products.")
+
+    # ── Tab 2: Portfolio Strategy Bubble ─────────────────────────────────────
+    with tabs[2]:
+        section("Portfolio Strategy Map — Top 30 Manufacturers")
+        top30_bubble = mfr_agg.nlargest(30,"products").copy()
+        top30_bubble["short"] = top30_bubble["manufacturer"].str.replace(
+            r"(Pharmaceuticals?|Industries?|Laboratories?|Ltd|Limited)","",regex=True).str.strip()
+        med_prod  = top30_bubble["products"].median()
+        med_price = top30_bubble["avg_price"].median()
+        fig = px.scatter(top30_bubble, x="products", y="avg_price",
+            size="market_share", color="disc_rate",
+            color_continuous_scale="RdYlGn_r",
+            hover_name="manufacturer", text="short",
+            size_max=60, template=TEMPLATE,
+            labels={"products":"Portfolio Size","avg_price":"Avg Price ₹","disc_rate":"Disc. Rate %"})
+        fig.update_traces(textposition="top center", textfont_size=8)
+        fig.add_vline(x=med_prod,  line_dash="dash", line_color="grey", opacity=0.5)
+        fig.add_hline(y=med_price, line_dash="dash", line_color="grey", opacity=0.5)
+        for label,xr,yr in [("Volume Leaders",0.85,0.08),("Premium Specialists",0.08,0.92),
+                             ("Market Dominators",0.85,0.92),("Niche Players",0.08,0.08)]:
+            fig.add_annotation(xref="paper",yref="paper",x=xr,y=yr,text=f"<i>{label}</i>",
+                showarrow=False,font=dict(size=9,color="#777"),
+                bgcolor="rgba(255,255,255,0.6)",bordercolor="#ccc",borderwidth=1)
+        fig.update_layout(height=640, margin=dict(t=20))
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Bottom-right quadrant = Volume Leaders (high portfolio, lower avg price). "
+                "Top-left = Premium Specialists. Color intensity = discontinuation risk.")
+
+    # ── Tab 3: Manufacturer × Class Heatmap ──────────────────────────────────
+    with tabs[3]:
+        section("Manufacturer × Therapeutic Class Heatmap (Top 15)")
+        top15_names = mfr_agg.nlargest(15,"products")["manufacturer"].tolist()
+        heat = (df[df["manufacturer"].isin(top15_names)]
+            .groupby(["manufacturer","therapeutic_class"]).size()
+            .unstack(fill_value=0))
+        heat = heat[heat.sum().sort_values(ascending=False).index]
+        heat = heat.loc[heat.sum(axis=1).sort_values(ascending=False).index]
+        short_y = [n.replace(" Pharmaceuticals","").replace(" Pharmaceutical","")
+                    .replace(" Industries","").replace(" Ltd","").replace(" Limited","")
+                    for n in heat.index]
+        fig = go.Figure(data=go.Heatmap(
+            z=heat.values, x=[c.title() for c in heat.columns], y=short_y,
+            colorscale="Blues", hoverongaps=False,
+            text=heat.values, texttemplate="%{text}", textfont=dict(size=10),
+            hovertemplate="<b>%{y}</b><br>%{x}: %{z:,} products<extra></extra>"))
+        fig.update_layout(height=520, template=TEMPLATE,
+            margin=dict(t=20,l=200,b=80),
+            xaxis=dict(tickangle=-30))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 4: Top Manufacturers per Class ───────────────────────────────────
+    with tabs[4]:
+        section("Top 7 Manufacturers per Therapeutic Class")
+        classes_ordered = ["antibiotic","analgesic","antacid","antihistamine",
+            "antidiabetic","antihypertensive","corticosteroid",
+            "antidepressant","bronchodilator","diuretic"]
+        fig = make_subplots(rows=5, cols=2,
+            subplot_titles=[c.title() for c in classes_ordered],
+            vertical_spacing=0.055, horizontal_spacing=0.18)
+        shorten = lambda n: n.replace(" Pharmaceuticals","").replace(" Pharmaceutical","") \
+                             .replace(" Industries","").replace(" Ltd","").strip()
+        for idx, cls in enumerate(classes_ordered):
+            row = idx // 2 + 1; col = idx % 2 + 1
+            sub = (df[df["therapeutic_class"]==cls].groupby("manufacturer")
+                .size().sort_values().tail(7))
+            fig.add_trace(go.Bar(x=sub.values, y=[shorten(n) for n in sub.index],
+                orientation="h", marker_color=COLORS[idx % len(COLORS)],
+                showlegend=False,
+                hovertemplate="<b>%{y}</b><br>Products: %{x}<extra></extra>"),
+                row=row, col=col)
+        fig.update_layout(height=1400, template=TEMPLATE, margin=dict(t=50,l=20))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 5: Discontinuation Risk ───────────────────────────────────────────
+    with tabs[5]:
+        section("Discontinuation Risk — Top 40 Manufacturers")
+        top40 = mfr_agg.nlargest(40,"products").copy()
+        top40["short"] = top40["manufacturer"].str.replace(
+            r"(Pharmaceuticals?|Industries?|Ltd|Limited)","",regex=True).str.strip()
+        fig = make_subplots(rows=1, cols=2,
+            subplot_titles=["Disc. Rate by Manufacturer","Products vs Disc. Rate — Risk Quadrants"],
+            horizontal_spacing=0.12)
+        top40_disc = top40.sort_values("disc_rate")
+        bar_colors = [WARN if r>10 else "#F0B27A" if r>5 else OK for r in top40_disc["disc_rate"]]
+        fig.add_trace(go.Bar(y=top40_disc["short"], x=top40_disc["disc_rate"],
+            orientation="h", marker_color=bar_colors, showlegend=False,
+            hovertemplate="<b>%{y}</b><br>Disc. Rate: %{x:.1f}%<extra></extra>"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=top40["products"], y=top40["disc_rate"],
+            mode="markers+text", text=top40["short"], textposition="top center",
+            textfont=dict(size=8),
+            marker=dict(size=12, color=top40["disc_rate"],
+                colorscale="RdYlGn_r", showscale=True,
+                colorbar=dict(title="Disc. %", x=1.02)),
+            hovertemplate="<b>%{text}</b><br>Products: %{x:,}<br>Disc.: %{y:.1f}%<extra></extra>",
+            showlegend=False), row=1, col=2)
+        fig.add_hline(y=5,  line_dash="dot", line_color="orange", row=1, col=2,
+            annotation_text="5% threshold")
+        fig.add_hline(y=10, line_dash="dot", line_color="red", row=1, col=2,
+            annotation_text="10% high risk")
+        fig.update_layout(height=680, template=TEMPLATE, margin=dict(t=50,r=80))
+        fig.update_xaxes(title_text="Disc. Rate (%)", row=1, col=1)
+        fig.update_xaxes(title_text="Total Products",  row=1, col=2)
+        fig.update_yaxes(title_text="Disc. Rate (%)",  row=1, col=2)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 6: Price Distribution Violin per Manufacturer ────────────────────
+    with tabs[6]:
+        section("Price Distribution by Manufacturer (Top 15 — Violin)")
+        top15_names = mfr_agg.nlargest(15,"products")["manufacturer"].tolist()
+        df_t15 = df[df["manufacturer"].isin(top15_names)].copy()
+        df_t15 = df_t15[df_t15["price_inr"] < df_t15["price_inr"].quantile(0.98)]
+        shorten2 = lambda n: n.replace(" Pharmaceuticals","").replace(" Pharmaceutical","") \
+                              .replace(" Industries","").replace(" Ltd","")
+        df_t15["short_mfr"] = df_t15["manufacturer"].apply(shorten2)
+        order = df_t15.groupby("short_mfr")["price_inr"].median().sort_values(ascending=False).index.tolist()
+        fig = go.Figure()
+        for i, mname in enumerate(order):
+            sub = df_t15[df_t15["short_mfr"]==mname]["price_inr"]
+            fig.add_trace(go.Violin(y=sub, name=mname,
+                box_visible=True, meanline_visible=True,
+                fillcolor=COLORS[i%len(COLORS)], opacity=0.7,
+                line_color="black",
+                hovertemplate=f"<b>{mname}</b><br>₹%{{y:.2f}}<extra></extra>"))
+        fig.add_hline(y=df_t15["price_inr"].median(), line_dash="dash",
+            line_color="black", opacity=0.5,
+            annotation_text=f"Market Median ₹{df_t15['price_inr'].median():.0f}",
+            annotation_position="right")
+        fig.update_layout(height=560, template=TEMPLATE,
+            showlegend=False, margin=dict(t=20,r=120),
+            yaxis_title="Price ₹", xaxis_title="Manufacturer")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 7: Avg Price by Therapeutic Class ────────────────────────────────
+    with tabs[7]:
+        section("Average Price by Therapeutic Class (Mean ± SD + Median)")
+        class_price = df.groupby("therapeutic_class").agg(
+            mean_price=("price_inr","mean"), std_price=("price_inr","std"),
+            median_price=("price_inr","median")).reset_index().sort_values("mean_price",ascending=False)
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=class_price["therapeutic_class"].str.title(),
+            y=class_price["mean_price"],
+            error_y=dict(type="data", array=class_price["std_price"], visible=True,
+                         color="rgba(0,0,0,0.3)"),
+            marker_color=px.colors.sequential.Blues_r[:len(class_price)],
+            name="Mean Price",
+            hovertemplate="<b>%{x}</b><br>Mean: ₹%{y:.2f}<extra></extra>"))
+        fig.add_trace(go.Scatter(
+            x=class_price["therapeutic_class"].str.title(),
+            y=class_price["median_price"],
+            mode="markers",
+            marker=dict(symbol="diamond", size=10, color=WARN),
+            name="Median",
+            hovertemplate="<b>%{x}</b><br>Median: ₹%{y:.2f}<extra></extra>"))
+        fig.update_layout(height=460, template=TEMPLATE, margin=dict(t=20),
+            yaxis_title="Price ₹",
+            legend=dict(orientation="h",y=1.05,x=0.5,xanchor="center"))
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Mean >> Median in every class signals heavy right-skew from specialty products. "
+                "Analgesics have the lowest median (₹48) — most commoditised class.")
+
+    # ── Tab 8: Lorenz / Concentration Curve ──────────────────────────────────
+    with tabs[8]:
+        section("Market Concentration Curve (Lorenz-style)")
+        mfr_sorted = mfr_agg.sort_values("market_share", ascending=False).reset_index(drop=True)
+        mfr_sorted["cum_share"] = mfr_sorted["market_share"].cumsum()
+        mfr_sorted["pct_mfr"]   = (mfr_sorted.index+1) / len(mfr_sorted) * 100
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=mfr_sorted["pct_mfr"], y=mfr_sorted["cum_share"],
+            mode="lines", fill="tozeroy", fillcolor=hex_to_rgba(ACCENT,0.15),
+            line=dict(color=ACCENT, width=2.5), name="Actual Concentration",
+            hovertemplate="Top %{x:.1f}% → %{y:.1f}% of market<extra></extra>"))
+        fig.add_trace(go.Scatter(x=[0,100], y=[0,100], mode="lines",
+            line=dict(color="grey",dash="dash",width=1.5), name="Perfect Equality"))
+        for pct in [1,5,10]:
+            idx = int(len(mfr_sorted)*pct/100)
+            cum = mfr_sorted.iloc[min(idx,len(mfr_sorted)-1)]["cum_share"]
+            fig.add_annotation(x=pct, y=cum, text=f"Top {pct}%<br>→ {cum:.1f}%",
+                showarrow=True, arrowhead=2, font=dict(size=10,color=ACCENT),
+                bgcolor="rgba(255,255,255,0.8)")
+        fig.update_layout(height=500, template=TEMPLATE, margin=dict(t=20),
+            xaxis_title="% of Manufacturers (ranked by size)",
+            yaxis_title="Cumulative Market Share (%)",
+            legend=dict(x=0.7,y=0.3))
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Top 1% of manufacturers control ~20% of products — "
+                "the market is highly fragmented across 7,648 manufacturers.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE: PRICE ANALYTICS
+# PAGE: PRICE ANALYTICS  (Module 2 — all charts)
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "💰 Price Analytics":
     st.title("💰 Price Analytics")
+    st.caption("Price distribution, tier structure, combination premiums, ingredient variance and manufacturer strategy")
 
-    c1,c2,c3,c4 = st.columns(4)
-    with c1: kpi("Median Price", df["price_inr"].median(), "gold", "₹{:.0f}")
-    with c2: kpi("Mean Price", df["price_inr"].mean(), "gold", "₹{:.0f}")
-    with c3: kpi("P95 Price", df["price_inr"].quantile(0.95), "warn", "₹{:.0f}")
-    with c4: kpi("Max Price", df["price_inr"].max(), "warn", "₹{:,.0f}")
+    p10,p25,p50,p75,p90,p99 = [df["price_inr"].quantile(q) for q in [.10,.25,.50,.75,.90,.99]]
+    under_100  = (df["price_inr"]<100).mean()*100
+    over_10k   = (df["price_inr"]>10000).mean()*100
+    df_unit = df.dropna(subset=["pack_size","price_inr"]).copy()
+    df_unit = df_unit[df_unit["pack_size"]>0].copy()
+    df_unit["price_per_unit"] = (df_unit["price_inr"] / df_unit["pack_size"]).round(4)
 
-    tabs = st.tabs(["Price Tiers", "By Class", "Dosage Premium", "Combo Premium", "Outliers"])
+    c1,c2,c3,c4,c5 = st.columns(5)
+    with c1: kpi("Median Price",  p50,        "gold", "₹{:.0f}")
+    with c2: kpi("Mean Price",    df["price_inr"].mean(), "gold", "₹{:.0f}")
+    with c3: kpi("P90 Price",     p90,        "warn", "₹{:.0f}")
+    with c4: kpi("Under ₹100",    under_100,  "ok",   "{:.1f}%")
+    with c5: kpi("Over ₹10,000",  over_10k,   "warn", "{:.2f}%")
 
+    tabs = st.tabs([
+        "Distribution & ECDF","Price by Class (Violin)","Price Range Bands",
+        "Combo Premium","Price Strip Plot","Outlier Explorer","Top 20 Expensive",
+        "Ingredient CV","Competition vs Price","Dosage Sunburst",
+        "Dosage × Tier Heatmap","Mfr Price Mix","Tier Waterfall"
+    ])
+
+    # ── Tab 0: Histogram + ECDF ───────────────────────────────────────────────
     with tabs[0]:
-        section("Price Tier Distribution")
-        tier_counts = df["price_tier"].value_counts().reindex(["Budget","Mid","Premium","Specialty"]).reset_index()
-        tier_counts.columns = ["tier","count"]
-        tier_counts["pct"] = tier_counts["count"]/tier_counts["count"].sum()*100
-        fig = go.Figure(go.Bar(
-            x=tier_counts["tier"],y=tier_counts["pct"],
-            marker_color=[OK,GOLD,"#E67E22",WARN],
-            text=[f"{v:.1f}%" for v in tier_counts["pct"]],textposition="outside"
-        ))
-        fig.update_layout(height=400,template=TEMPLATE,margin=dict(t=20),
-                          yaxis_title="% of Products",xaxis_title="Price Tier")
+        section("Overall Price Distribution — Histogram + ECDF")
+        df_plot = df[df["price_inr"] <= df["price_inr"].quantile(0.97)].copy()
+        sorted_prices = np.sort(df["price_inr"].dropna().values)
+        ecdf_y = np.arange(1, len(sorted_prices)+1) / len(sorted_prices) * 100
+        fig = make_subplots(rows=1, cols=2,
+            subplot_titles=["Price Histogram (P97 trimmed)","Cumulative Distribution (log X)"],
+            horizontal_spacing=0.1)
+        fig.add_trace(go.Histogram(x=df_plot["price_inr"], nbinsx=80,
+            marker_color=ACCENT, opacity=0.8,
+            hovertemplate="₹%{x}<br>%{y:,} products<extra></extra>"), row=1, col=1)
+        for pval,plabel,pcolor in [(p25,"P25","green"),(p50,"Median","blue"),(p75,"P75","orange"),(p90,"P90","red")]:
+            fig.add_vline(x=pval, line_dash="dash", line_color=pcolor, opacity=0.7, row=1, col=1,
+                annotation_text=f"{plabel} ₹{pval:.0f}", annotation_font_size=9)
+        fig.add_trace(go.Scatter(x=sorted_prices, y=ecdf_y, mode="lines",
+            line=dict(color=ACCENT, width=2), name="ECDF",
+            hovertemplate="₹%{x:.2f}<br>%{y:.1f}% of products<extra></extra>"), row=1, col=2)
+        for pct_val,price_val in [(50,p50),(75,p75),(90,p90),(99,p99)]:
+            fig.add_annotation(x=price_val, y=pct_val, row=1, col=2,
+                text=f"P{pct_val} ₹{price_val:.0f}", showarrow=True, arrowhead=2,
+                font=dict(size=9), bgcolor="rgba(255,255,255,0.8)")
+        fig.update_xaxes(title_text="Price ₹", row=1, col=1)
+        fig.update_xaxes(title_text="Price ₹ (log)", row=1, col=2, type="log")
+        fig.update_yaxes(title_text="Products", row=1, col=1)
+        fig.update_yaxes(title_text="Cumulative %", row=1, col=2)
+        fig.update_layout(height=460, template=TEMPLATE, showlegend=False, margin=dict(t=50))
         st.plotly_chart(fig, use_container_width=True)
+        insight(f"{under_100:.0f}% of all products are priced under ₹100. "
+                "Mean (₹270) vs Median (₹79) gap reveals heavy right-skew from specialty drugs.")
 
+    # ── Tab 1: Violin by Class ────────────────────────────────────────────────
     with tabs[1]:
-        section("Price Distribution by Therapeutic Class")
-        class_price = df.groupby("therapeutic_class")["price_inr"].agg(
-            ["median","mean",lambda x:x.quantile(0.25),lambda x:x.quantile(0.75)]
-        ).reset_index()
-        class_price.columns = ["class","median","mean","p25","p75"]
-        class_price = class_price.sort_values("median",ascending=True)
+        section("Price Distribution by Therapeutic Class (Violin)")
+        classes_named = ["antibiotic","analgesic","antacid","antihistamine",
+            "antidiabetic","antihypertensive","corticosteroid",
+            "antidepressant","bronchodilator","diuretic"]
+        df_cls = df[df["therapeutic_class"].isin(classes_named) & (df["price_inr"]<=500)].copy()
         fig = go.Figure()
-        fig.add_trace(go.Bar(y=class_price["class"].str.title(),x=class_price["median"],
-            orientation="h",marker_color=ACCENT,name="Median",
-            text=[f"₹{v:.0f}" for v in class_price["median"]],textposition="outside"))
-        fig.add_trace(go.Scatter(y=class_price["class"].str.title(),x=class_price["mean"],
-            mode="markers",marker=dict(size=10,color=WARN,symbol="diamond"),name="Mean"))
-        fig.update_layout(height=420,template=TEMPLATE,margin=dict(t=20,r=80),
-                          xaxis_title="Price ₹",yaxis_title="",
-                          legend=dict(orientation="h",y=1.05))
+        for i, cls in enumerate(classes_named):
+            sub = df_cls[df_cls["therapeutic_class"]==cls]["price_inr"]
+            fig.add_trace(go.Violin(x=sub, name=cls.title(), orientation="h",
+                side="positive", width=1.8,
+                line_color=COLORS[i%len(COLORS)], fillcolor=COLORS[i%len(COLORS)],
+                opacity=0.6, meanline_visible=True, box_visible=True,
+                hovertemplate=f"<b>{cls.title()}</b><br>₹%{{x:.2f}}<extra></extra>"))
+        fig.update_layout(height=600, template=TEMPLATE, showlegend=False,
+            violingap=0.05, violingroupgap=0,
+            margin=dict(t=20,l=140), xaxis_title="Price ₹")
         st.plotly_chart(fig, use_container_width=True)
 
+    # ── Tab 2: Percentile Bands ───────────────────────────────────────────────
     with tabs[2]:
-        section("Median Price by Dosage Form")
-        form_price = df.groupby("dosage_form")["price_inr"].agg(
-            median="median",count="count"
-        ).reset_index()
-        form_price = form_price[form_price["count"]>=50].sort_values("median",ascending=True)
-        fig = px.bar(form_price.tail(15),y="dosage_form",x="median",
-            orientation="h",color="median",color_continuous_scale="Blues",
-            template=TEMPLATE,
-            labels={"median":"Median Price ₹","dosage_form":"Dosage Form"})
-        fig.update_layout(height=440,margin=dict(t=20,r=60),coloraxis_showscale=False)
+        section("Price Range Bands by Therapeutic Class (P10–P90 + IQR + Median)")
+        class_pcts = df[df["therapeutic_class"].isin(classes_named)].groupby("therapeutic_class")["price_inr"].agg(
+            p10=lambda x: x.quantile(.10), p25=lambda x: x.quantile(.25),
+            p50=lambda x: x.quantile(.50), p75=lambda x: x.quantile(.75),
+            p90=lambda x: x.quantile(.90), mean="mean"
+        ).reset_index().sort_values("p50")
+        fig = go.Figure()
+        fig.add_trace(go.Bar(y=class_pcts["therapeutic_class"].str.title(),
+            x=class_pcts["p90"]-class_pcts["p10"], base=class_pcts["p10"],
+            orientation="h", marker_color="rgba(173,216,230,0.5)", name="P10–P90",
+            hovertemplate="<b>%{y}</b><br>P10–P90<extra></extra>"))
+        fig.add_trace(go.Bar(y=class_pcts["therapeutic_class"].str.title(),
+            x=class_pcts["p75"]-class_pcts["p25"], base=class_pcts["p25"],
+            orientation="h", marker_color=ACCENT, opacity=0.8, name="IQR P25–P75",
+            hovertemplate="<b>%{y}</b><br>IQR: ₹%{base:.0f}–₹%{x:.0f}<extra></extra>"))
+        fig.add_trace(go.Scatter(y=class_pcts["therapeutic_class"].str.title(),
+            x=class_pcts["p50"], mode="markers",
+            marker=dict(symbol="line-ew", size=16, color="white", line=dict(color="black",width=2)),
+            name="Median"))
+        fig.add_trace(go.Scatter(y=class_pcts["therapeutic_class"].str.title(),
+            x=class_pcts["mean"], mode="markers",
+            marker=dict(symbol="diamond", size=10, color=WARN), name="Mean"))
+        fig.update_layout(barmode="overlay", height=480, template=TEMPLATE,
+            margin=dict(t=20,l=160), xaxis_title="Price ₹",
+            legend=dict(orientation="h",y=1.05,x=0.5,xanchor="center"))
         st.plotly_chart(fig, use_container_width=True)
 
+    # ── Tab 3: Combo Premium ──────────────────────────────────────────────────
     with tabs[3]:
-        section("Combination Drug Price Premium by Therapeutic Class")
-        combo_premium = df.groupby(["therapeutic_class","is_combo"])["price_inr"].median().unstack()
-        combo_premium.columns = ["Single","Combo"]
-        combo_premium = combo_premium.dropna()
-        combo_premium["premium_pct"] = (combo_premium["Combo"]-combo_premium["Single"])/combo_premium["Single"]*100
-        combo_premium = combo_premium.sort_values("premium_pct",ascending=True).reset_index()
-        fig = go.Figure(go.Bar(
-            y=combo_premium["therapeutic_class"].str.title(),
-            x=combo_premium["premium_pct"],orientation="h",
-            marker_color=[WARN if v>100 else GOLD if v>50 else OK for v in combo_premium["premium_pct"]],
-            text=[f"+{v:.0f}%" for v in combo_premium["premium_pct"]],textposition="outside"
-        ))
-        fig.add_vline(x=0,line_dash="dash",line_color="grey")
-        fig.update_layout(height=400,template=TEMPLATE,margin=dict(t=20,r=80),
-                          xaxis_title="Price Premium %",yaxis_title="")
+        section("Combination Drug Price Premium Analysis")
+        premium_rows = []
+        for cls in classes_named:
+            sub    = df[df["therapeutic_class"]==cls]
+            single = sub[sub["num_active_ingredients"]==1]["price_inr"]
+            combo  = sub[sub["num_active_ingredients"]>1]["price_inr"]
+            if len(single)>10 and len(combo)>10:
+                s,c = single.median(), combo.median()
+                premium_rows.append({"class":cls.title(),"single":s,"combo":c,
+                    "premium_pct":(c-s)/s*100,"n_single":len(single),"n_combo":len(combo)})
+        prem_df = pd.DataFrame(premium_rows).sort_values("premium_pct")
+        fig = make_subplots(rows=1, cols=2,
+            subplot_titles=["Combo Premium % over Single","Median Price: Single vs Combo ₹"],
+            horizontal_spacing=0.15)
+        fig.add_trace(go.Bar(y=prem_df["class"], x=prem_df["premium_pct"], orientation="h",
+            marker_color=[OK if v>0 else WARN for v in prem_df["premium_pct"]],
+            text=[f"+{v:.0f}%" for v in prem_df["premium_pct"]], textposition="outside",
+            showlegend=False,
+            hovertemplate="<b>%{y}</b><br>Premium: %{x:+.1f}%<extra></extra>"), row=1, col=1)
+        fig.add_vline(x=0, line_color="black", line_width=1, row=1, col=1)
+        fig.add_trace(go.Bar(name="Single", y=prem_df["class"], x=prem_df["single"],
+            orientation="h", marker_color=ACCENT, opacity=0.85,
+            hovertemplate="<b>%{y}</b><br>Single: ₹%{x:.1f}<extra></extra>"), row=1, col=2)
+        fig.add_trace(go.Bar(name="Combo", y=prem_df["class"], x=prem_df["combo"],
+            orientation="h", marker_color=GOLD, opacity=0.85,
+            hovertemplate="<b>%{y}</b><br>Combo: ₹%{x:.1f}<extra></extra>"), row=1, col=2)
+        fig.update_layout(barmode="group", height=500, template=TEMPLATE,
+            margin=dict(t=50,l=10,r=80),
+            legend=dict(orientation="h",y=1.06,x=0.75,xanchor="center"))
+        fig.update_xaxes(title_text="Premium % over single", row=1, col=1)
+        fig.update_xaxes(title_text="Median Price ₹", row=1, col=2)
         st.plotly_chart(fig, use_container_width=True)
-        insight("Diuretics (+385%) and Bronchodilators (+332%) command the highest combination drug premiums.")
+        insight("Diuretics (+385%) and Bronchodilators (+332%) command the highest premiums. "
+                "Combination products are the primary margin-enhancement strategy across all classes.")
 
+    # ── Tab 4: Strip Plot ─────────────────────────────────────────────────────
     with tabs[4]:
-        section("High-Cost Outlier Explorer (≥ P95)")
-        p95 = df["price_inr"].quantile(0.95)
-        outliers = df[df["price_inr"]>=p95].nlargest(50,"price_inr")[
-            ["brand_name","manufacturer","therapeutic_class","dosage_form","price_inr","num_active_ingredients"]
+        section("Price Strip Plot — Single vs Combo Drugs by Class")
+        df_strip = df[df["therapeutic_class"].isin(classes_named) & df["price_inr"].between(1,1000)].copy()
+        df_strip["ingredient_type"] = df_strip["num_active_ingredients"].apply(
+            lambda x: "Single" if x==1 else ("Dual" if x==2 else "3+ Combo"))
+        fig = px.strip(df_strip.sample(min(6000,len(df_strip)),random_state=42),
+            x="therapeutic_class", y="price_inr", color="ingredient_type",
+            color_discrete_map={"Single":ACCENT,"Dual":GOLD,"3+ Combo":WARN},
+            hover_name="brand_name",
+            hover_data={"manufacturer":True,"price_inr":":.2f","therapeutic_class":False},
+            category_orders={"therapeutic_class":classes_named},
+            template=TEMPLATE)
+        fig.update_traces(marker_size=3, opacity=0.5)
+        fig.update_layout(height=520, yaxis_title="Price ₹", xaxis_title="",
+            xaxis_tickangle=-20, legend_title="Ingredient Type", margin=dict(t=20))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 5: Outlier Explorer ───────────────────────────────────────────────
+    with tabs[5]:
+        section(f"High-Cost Product Explorer (≥ P95 = ₹{p90:.0f})")
+        outliers = df[df["price_inr"]>=p90].copy()
+        outliers["mfr_short"] = outliers["manufacturer"].str.replace(
+            r"(Pharmaceuticals?|Industries?|Laboratories?|Ltd|Limited)","",regex=True).str.strip()
+        fig = px.scatter(outliers, x="price_inr", y="dosage_form",
+            color="therapeutic_class", size="price_inr", size_max=40,
+            hover_name="brand_name",
+            hover_data={"manufacturer":True,"price_inr":":.2f",
+                "primary_ingredient":True,"dosage_form":False,"therapeutic_class":False},
+            log_x=True, color_discrete_sequence=COLORS, template=TEMPLATE,
+            labels={"price_inr":"Price ₹ (log)","dosage_form":"Dosage Form"})
+        fig.update_layout(height=560, margin=dict(t=20), legend_title="Therapeutic Class")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 6: Top 20 Expensive Table ────────────────────────────────────────
+    with tabs[6]:
+        section("Top 20 Highest Priced Products")
+        top20_exp = df.nlargest(20,"price_inr")[
+            ["brand_name","manufacturer","primary_ingredient","dosage_form","therapeutic_class","price_inr"]
         ].reset_index(drop=True)
-        outliers.index += 1
-        st.dataframe(outliers, use_container_width=True, height=400)
+        top20_exp.index += 1
+        top20_exp["price_inr"] = top20_exp["price_inr"].apply(lambda x: f"₹{x:,.2f}")
+        st.dataframe(top20_exp, use_container_width=True, height=560)
+        insight("All top-20 are oncology/specialty biologics — classified under 'other' therapeutic class.")
+
+    # ── Tab 7: Ingredient CV ─────────────────────────────────────────────────
+    with tabs[7]:
+        section("Ingredient-Level Price Variance — Coefficient of Variation")
+        ingr_cv = df.groupby("primary_ingredient")["price_inr"].agg(
+            min_p="min", max_p="max", mean="mean", std="std", count="count", median="median"
+        ).reset_index()
+        ingr_cv = ingr_cv[ingr_cv["count"]>=50]
+        ingr_cv["cv"] = (ingr_cv["std"]/ingr_cv["mean"]*100).round(2)
+        ingr_cv["range_ratio"] = (ingr_cv["max_p"]/ingr_cv["min_p"].replace(0,np.nan)).round(1)
+        top_cv = ingr_cv.nlargest(20,"cv")
+        top_rng = ingr_cv.nlargest(15,"range_ratio").sort_values("range_ratio")
+        fig = make_subplots(rows=1, cols=2,
+            subplot_titles=["Top 20 by CV% (Generic/Branded gap)","Min-Max Price Range Dumbbell"],
+            horizontal_spacing=0.12)
+        fig.add_trace(go.Bar(y=top_cv["primary_ingredient"], x=top_cv["cv"],
+            orientation="h", marker_color=top_cv["cv"], marker_colorscale="RdYlGn_r",
+            showlegend=False, text=top_cv["cv"].apply(lambda x:f"{x:.0f}%"),
+            textposition="outside",
+            hovertemplate="<b>%{y}</b><br>CV: %{x:.1f}%<extra></extra>"), row=1, col=1)
+        for _, row in top_rng.iterrows():
+            fig.add_trace(go.Scatter(
+                x=[row["min_p"],row["max_p"]], y=[row["primary_ingredient"],row["primary_ingredient"]],
+                mode="lines+markers", line=dict(color="lightgrey",width=2),
+                marker=dict(size=10, color=[OK,WARN]), showlegend=False,
+                hovertemplate=f"<b>{row['primary_ingredient']}</b><br>₹{row['min_p']:.2f}–₹{row['max_p']:,.2f}<extra></extra>"),
+                row=1, col=2)
+        fig.update_xaxes(title_text="CV (%)", row=1, col=1)
+        fig.update_xaxes(title_text="Price ₹ (log)", type="log", row=1, col=2)
+        fig.update_layout(height=560, template=TEMPLATE, margin=dict(t=50,l=10))
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Risperidone CV 631% and Cefoperazone 306% — "
+                "massive generic/branded price gaps signal lucrative generic entry opportunities.")
+
+    # ── Tab 8: Competition vs Price Bubble ───────────────────────────────────
+    with tabs[8]:
+        section("Ingredient Competition vs Price (Bubble = CV%)")
+        bubble_ingr = ingr_cv[ingr_cv["count"].between(50,5000)].copy()
+        bubble_ingr["therapeutic_class"] = bubble_ingr["primary_ingredient"].map(
+            df.groupby("primary_ingredient")["therapeutic_class"].agg(lambda x: x.mode()[0]))
+        fig = px.scatter(bubble_ingr, x="count", y="median", size="cv",
+            color="therapeutic_class", hover_name="primary_ingredient",
+            hover_data={"count":":","median":":.2f","cv":":.1f","range_ratio":":.1f"},
+            size_max=35, color_discrete_sequence=COLORS, template=TEMPLATE,
+            labels={"count":"# Products (competition)","median":"Median Price ₹","cv":"CV%"})
+        fig.update_layout(height=540, margin=dict(t=20),
+            xaxis_title="Number of Products (competition intensity)",
+            yaxis_title="Median Price ₹", legend_title="Class")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 9: Dosage Sunburst ────────────────────────────────────────────────
+    with tabs[9]:
+        section("Dosage Form → Pack Unit → Price Tier Sunburst")
+        df_sun = df.copy()
+        df_sun["price_tier"] = pd.cut(df_sun["price_inr"],
+            bins=[0,50,100,200,500,2000,float("inf")],
+            labels=["₹0–50","₹50–100","₹100–200","₹200–500","₹500–2K","₹2K+"]).astype(str)
+        df_sun = df_sun[(df_sun["price_tier"]!="nan") & df_sun["pack_unit"].notna()]
+        sun_data = (df_sun.groupby(["dosage_form","pack_unit","price_tier"],observed=True)
+            .size().reset_index(name="count"))
+        sun_data = sun_data[sun_data["count"]>5]
+        fig = px.sunburst(sun_data, path=["dosage_form","pack_unit","price_tier"],
+            values="count", color="dosage_form",
+            color_discrete_sequence=COLORS, template=TEMPLATE)
+        fig.update_traces(textinfo="label+percent parent",
+            hovertemplate="<b>%{label}</b><br>Products: %{value:,}<br>% parent: %{percentParent:.1%}<extra></extra>")
+        fig.update_layout(height=660, margin=dict(t=20))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 10: Dosage × Price Tier Heatmap ──────────────────────────────────
+    with tabs[10]:
+        section("Product Count: Dosage Form × Price Tier")
+        df_sun2 = df.copy()
+        df_sun2["price_tier"] = pd.cut(df_sun2["price_inr"],
+            bins=[0,50,100,200,500,2000,float("inf")],
+            labels=["₹0–50","₹50–100","₹100–200","₹200–500","₹500–2K","₹2K+"]).astype(str)
+        df_sun2 = df_sun2[df_sun2["price_tier"]!="nan"]
+        heat_d = df_sun2.groupby(["dosage_form","price_tier"]).size().unstack(fill_value=0)
+        heat_d = heat_d.loc[heat_d.sum(axis=1).sort_values(ascending=False).index]
+        fig = go.Figure(data=go.Heatmap(
+            z=heat_d.values, x=[str(c) for c in heat_d.columns],
+            y=[r.title() for r in heat_d.index],
+            colorscale="Blues", text=heat_d.values,
+            texttemplate="%{text:,}", textfont=dict(size=11),
+            hovertemplate="<b>%{y} — %{x}</b><br>Products: %{z:,}<extra></extra>"))
+        fig.update_layout(height=480, template=TEMPLATE, margin=dict(t=20,l=110))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 11: Manufacturer Price Mix ────────────────────────────────────────
+    with tabs[11]:
+        section("Manufacturer Price Portfolio Mix (Top 15)")
+        top15_names = df["manufacturer"].value_counts().head(15).index.tolist()
+        df_t15m = df[df["manufacturer"].isin(top15_names)].copy()
+        df_t15m["price_tier"] = pd.cut(df_t15m["price_inr"],
+            bins=[0,50,100,200,500,float("inf")],
+            labels=["Budget (₹0–50)","Value (₹50–100)","Mid (₹100–200)",
+                    "Premium (₹200–500)","Specialty (₹500+)"]).astype(str)
+        df_t15m = df_t15m[df_t15m["price_tier"]!="nan"]
+        tier_mix = df_t15m.groupby(["manufacturer","price_tier"]).size().unstack(fill_value=0)
+        tier_mix_pct = tier_mix.div(tier_mix.sum(axis=1),axis=0)*100
+        shorten3 = lambda n: n.replace(" Pharmaceuticals","").replace(" Pharmaceutical","") \
+                              .replace(" Industries","").replace(" Ltd","").strip()
+        tier_mix_pct.index = [shorten3(n) for n in tier_mix_pct.index]
+        tier_mix_pct = tier_mix_pct.sort_values("Specialty (₹500+)", ascending=True)
+        tier_cols = [OK,"#58D68D",GOLD,"#E67E22",WARN]
+        fig = go.Figure()
+        for col_name, color in zip(tier_mix_pct.columns, tier_cols):
+            if col_name in tier_mix_pct.columns:
+                fig.add_trace(go.Bar(y=tier_mix_pct.index, x=tier_mix_pct[col_name],
+                    name=str(col_name), orientation="h", marker_color=color,
+                    hovertemplate=f"<b>%{{y}}</b><br>{col_name}: %{{x:.1f}}%<extra></extra>"))
+        fig.update_layout(barmode="stack", height=540, template=TEMPLATE,
+            margin=dict(t=20,l=160,r=20), xaxis_title="% of Product Portfolio",
+            legend=dict(orientation="h",y=1.06,x=0.5,xanchor="center"))
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Dr Reddy's and Emcure have the highest specialty share — "
+                "premium-focused strategy. Mankind and Micro Labs dominate the budget tier.")
+
+    # ── Tab 12: Tier Waterfall ────────────────────────────────────────────────
+    with tabs[12]:
+        section("Market Price Tier Distribution — Count + Cumulative")
+        tiers = pd.cut(df["price_inr"],
+            bins=[0,50,100,200,500,2000,float("inf")],
+            labels=["₹0–50","₹50–100","₹100–200","₹200–500","₹500–2K","₹2K+"]
+        ).value_counts().sort_index()
+        tier_pct  = (tiers/tiers.sum()*100).round(1)
+        cumulative = tier_pct.cumsum()
+        fig = make_subplots(rows=1, cols=2,
+            subplot_titles=["Product Count by Price Tier","Cumulative Coverage"],
+            horizontal_spacing=0.12)
+        tier_colors_list = [OK,"#58D68D",GOLD,"#E67E22",WARN,"#922B21"]
+        fig.add_trace(go.Bar(x=tiers.index.astype(str), y=tiers.values,
+            marker_color=tier_colors_list,
+            text=[f"{v:,}\n({p:.1f}%)" for v,p in zip(tiers.values,tier_pct.values)],
+            textposition="outside", showlegend=False,
+            hovertemplate="<b>%{x}</b><br>%{y:,} products<extra></extra>"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=cumulative.index.astype(str), y=cumulative.values,
+            mode="lines+markers+text",
+            line=dict(color=ACCENT,width=2.5), marker=dict(size=10,color=ACCENT),
+            text=[f"{v:.0f}%" for v in cumulative.values],
+            textposition="top right", showlegend=False), row=1, col=2)
+        fig.add_hline(y=80, line_dash="dash", line_color="orange", row=1, col=2,
+            annotation_text="80% coverage", annotation_position="right")
+        fig.update_yaxes(title_text="Products", row=1, col=1)
+        fig.update_yaxes(title_text="Cumulative %", row=1, col=2)
+        fig.update_layout(height=460, template=TEMPLATE, margin=dict(t=50,r=80))
+        st.plotly_chart(fig, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE: INGREDIENT INTELLIGENCE
+# PAGE: INGREDIENT INTELLIGENCE  (Module 3 — all charts)
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🧪 Ingredient Intelligence":
     st.title("🧪 Ingredient Intelligence")
+    st.caption("Co-occurrence networks, combo strategy, competitive overlap, price variance and portfolio heatmaps")
 
-    tabs = st.tabs(["Top Ingredients", "Combo Strategy", "Portfolio Diversity", "Price by Ingredient"])
+    # ── Pre-compute ingredient data ───────────────────────────────────────────
+    from collections import Counter
 
+    df_exp = df.explode("ingredient_names").rename(columns={"ingredient_names":"ingredient"})
+    df_exp = df_exp[df_exp["ingredient"].notna() & (df_exp["ingredient"]!="")]
+
+    ingr_stats = df_exp.groupby("ingredient").agg(
+        total_products=("product_id","count"),
+        avg_price=("price_inr","mean"),
+        median_price=("price_inr","median"),
+        primary_class=("therapeutic_class", lambda x: x.mode()[0]),
+        manufacturers=("manufacturer","nunique"),
+        solo_products=("num_active_ingredients", lambda x:(x==1).sum()),
+        combo_products=("num_active_ingredients", lambda x:(x>1).sum()),
+    ).reset_index()
+    ingr_stats["combo_ratio"] = (ingr_stats["combo_products"]/ingr_stats["total_products"]*100).round(1)
+
+    all_ingrs = [i for lst in df["ingredient_names"] for i in lst if isinstance(lst,list)]
+    ingr_freq = Counter(all_ingrs)
+
+    pair_counter = Counter()
+    for ingrs in df["ingredient_names"]:
+        if not isinstance(ingrs, list): continue
+        u = list(set(ingrs))
+        for i in range(len(u)):
+            for j in range(i+1, len(u)):
+                pair_counter[tuple(sorted([u[i],u[j]]))] += 1
+
+    unique_classes = ingr_stats["primary_class"].unique()
+    class_color_map = {c: COLORS[i%len(COLORS)] for i,c in enumerate(unique_classes)}
+
+    c1,c2,c3,c4 = st.columns(4)
+    with c1: kpi("Unique Ingredients", ingr_stats.shape[0], fmt="{:,}")
+    with c2: kpi("Co-occurrence Pairs", len(pair_counter), fmt="{:,}")
+    with c3: kpi("Top Ingredient", 0, fmt="Paracetamol")
+    with c4: kpi("Always-Combo ≥100", int(((ingr_stats["combo_ratio"]==100)&(ingr_stats["total_products"]>=100)).sum()), "warn", fmt="{:,}")
+
+    tabs = st.tabs([
+        "Ingredient Treemap","Top 25 Frequency","Co-occurrence Network",
+        "Top 25 Pairs","Co-occurrence Heatmap","Class Diversity Bubble",
+        "Top 8 per Class","Combo Strategy Map","Exclusivity Analysis",
+        "Jaccard Overlap","Portfolio Differentiation",
+        "Price Variance Map","Median Price by Ingredient",
+        "Portfolio Heatmap","Ingredient Sunburst"
+    ])
+
+    # ── Tab 0: Treemap ────────────────────────────────────────────────────────
     with tabs[0]:
-        section("Top 30 Ingredients by Product Count")
-        top_ingr = df["primary_ingredient"].value_counts().head(30).reset_index()
-        top_ingr.columns = ["ingredient","count"]
-        top_ingr = top_ingr.merge(
-            df.groupby("primary_ingredient")["is_combo"].mean().reset_index().rename(
-                columns={"primary_ingredient":"ingredient","is_combo":"combo_ratio"}),
-            on="ingredient"
-        )
-        fig = px.bar(top_ingr,y="ingredient",x="count",orientation="h",
-            color="combo_ratio",color_continuous_scale="RdYlGn",
-            template=TEMPLATE,
-            labels={"count":"Products","ingredient":"","combo_ratio":"Combo Ratio"})
-        fig.update_layout(height=680,margin=dict(t=20))
+        section("Top 30 Ingredients — Market Presence Treemap")
+        top30 = ingr_stats.nlargest(30,"total_products").copy()
+        fig = px.treemap(top30,
+            path=[px.Constant("All Ingredients"),"primary_class","ingredient"],
+            values="total_products", color="combo_ratio",
+            color_continuous_scale="RdYlGn",
+            hover_data={"total_products":":,","manufacturers":":,","combo_ratio":":.1f","median_price":":.2f"},
+            template=TEMPLATE)
+        fig.update_traces(textinfo="label+value",
+            hovertemplate="<b>%{label}</b><br>Products: %{value:,}<br>Combo: %{color:.1f}%<extra></extra>")
+        fig.update_layout(height=620, margin=dict(t=20),
+            coloraxis_colorbar=dict(title="Combo %"))
         st.plotly_chart(fig, use_container_width=True)
+        insight("Size = product count | Color: green = mostly solo ingredient, red = mostly used in combos.")
 
+    # ── Tab 1: Top 25 Products + Manufacturer Count ───────────────────────────
     with tabs[1]:
-        section("Combo vs Solo Strategy by Therapeutic Class")
-        combo_class = df.groupby("therapeutic_class").agg(
-            total=("product_id","count"),
-            combo_count=("is_combo","sum"),
-            solo_count=("is_combo",lambda x:(~x.astype(bool)).sum())
-        ).reset_index()
-        combo_class["combo_pct"] = combo_class["combo_count"]/combo_class["total"]*100
-        combo_class = combo_class.sort_values("combo_pct",ascending=True)
-        fig = go.Figure()
-        fig.add_trace(go.Bar(y=combo_class["therapeutic_class"].str.title(),
-            x=combo_class["combo_pct"],name="Combo %",
-            marker_color=ACCENT,orientation="h",
-            text=[f"{v:.0f}%" for v in combo_class["combo_pct"]],textposition="outside"))
-        fig.update_layout(height=400,template=TEMPLATE,margin=dict(t=20,r=80),
-                          xaxis_title="% Combination Products",yaxis_title="")
+        section("Top 25 Ingredients — Product Count vs Manufacturer Reach")
+        top25 = ingr_stats.nlargest(25,"total_products").sort_values("total_products")
+        fig = make_subplots(rows=1, cols=2,
+            subplot_titles=["Product Count","Manufacturer Count"],
+            horizontal_spacing=0.12)
+        fig.add_trace(go.Bar(y=top25["ingredient"], x=top25["total_products"],
+            orientation="h", marker_color=ACCENT, showlegend=False,
+            hovertemplate="<b>%{y}</b><br>Products: %{x:,}<extra></extra>"), row=1, col=1)
+        fig.add_trace(go.Bar(y=top25["ingredient"], x=top25["manufacturers"],
+            orientation="h", marker_color=top25["manufacturers"],
+            marker_colorscale="Blues", showlegend=False,
+            hovertemplate="<b>%{y}</b><br>Manufacturers: %{x:,}<extra></extra>"), row=1, col=2)
+        fig.update_xaxes(title_text="Products",      row=1, col=1)
+        fig.update_xaxes(title_text="Manufacturers", row=1, col=2)
+        fig.update_layout(height=680, template=TEMPLATE, margin=dict(t=50))
         st.plotly_chart(fig, use_container_width=True)
+        insight("High manufacturer count = commoditised ingredient. Low = differentiated/specialty play.")
 
+    # ── Tab 2: Network Graph ──────────────────────────────────────────────────
     with tabs[2]:
-        section("Ingredient Diversity per Therapeutic Class")
-        div_class = df.groupby("therapeutic_class").agg(
-            unique_ingredients=("primary_ingredient","nunique"),
-            products=("product_id","count")
-        ).reset_index().sort_values("unique_ingredients",ascending=True)
-        fig = make_subplots(rows=1,cols=2,subplot_titles=["Unique Ingredients","Products"])
-        fig.add_trace(go.Bar(y=div_class["therapeutic_class"].str.title(),
-            x=div_class["unique_ingredients"],orientation="h",marker_color=ACCENT,showlegend=False,
-            text=div_class["unique_ingredients"],textposition="outside"),row=1,col=1)
-        fig.add_trace(go.Bar(y=div_class["therapeutic_class"].str.title(),
-            x=div_class["products"],orientation="h",marker_color=GOLD,showlegend=False,
-            text=div_class["products"],textposition="outside"),row=1,col=2)
-        fig.update_layout(height=420,template=TEMPLATE,margin=dict(t=40,r=80))
+        section("Ingredient Co-occurrence Network (Top 40 nodes, ≥200 products per edge)")
+        TOP_N = 40; MIN_EDGE = 200
+        top_ingr_names = [i for i,_ in ingr_freq.most_common(TOP_N)]
+        top_pairs_net = [(pair,cnt) for pair,cnt in pair_counter.most_common()
+            if cnt>=MIN_EDGE and pair[0] in top_ingr_names and pair[1] in top_ingr_names]
+        degree = Counter()
+        for (a,b),cnt in top_pairs_net: degree[a]+=1; degree[b]+=1
+        n = len(top_ingr_names)
+        angles = np.linspace(0, 2*np.pi, n, endpoint=False)
+        top_sorted = sorted(top_ingr_names, key=lambda x: ingr_stats[ingr_stats["ingredient"]==x]["primary_class"].values[0] if len(ingr_stats[ingr_stats["ingredient"]==x])>0 else "z")
+        pos = {nm: (np.cos(angles[i]), np.sin(angles[i])) for i,nm in enumerate(top_sorted)}
+        class_map = ingr_stats.set_index("ingredient")["primary_class"].to_dict()
+        uc2 = list(set(class_map.get(i,"other") for i in top_ingr_names))
+        ccm2 = {c:COLORS[i%len(COLORS)] for i,c in enumerate(uc2)}
+        max_cnt = max((cnt for _,cnt in top_pairs_net), default=1)
+        edge_traces = []
+        for (a,b),cnt in top_pairs_net:
+            if a in pos and b in pos:
+                x0,y0=pos[a]; x1,y1=pos[b]
+                w = 0.5+(cnt/max_cnt)*6; op = 0.2+(cnt/max_cnt)*0.6
+                edge_traces.append(go.Scatter(x=[x0,x1,None],y=[y0,y1,None],mode="lines",
+                    line=dict(width=w,color=f"rgba(100,100,200,{op:.2f})"),
+                    hoverinfo="skip", showlegend=False))
+        node_traces = []
+        for cls in uc2:
+            nodes_c = [nm for nm in top_sorted if class_map.get(nm,"other")==cls]
+            if not nodes_c: continue
+            node_traces.append(go.Scatter(
+                x=[pos[nm][0] for nm in nodes_c], y=[pos[nm][1] for nm in nodes_c],
+                mode="markers+text", name=cls.title(), text=nodes_c,
+                textposition="top center", textfont=dict(size=8),
+                marker=dict(size=[12+degree.get(nm,0)*3 for nm in nodes_c],
+                    color=ccm2[cls], line=dict(width=1.5,color="white"), opacity=0.9),
+                hovertext=[f"<b>{nm}</b><br>{cls}<br>Connections: {degree.get(nm,0)}<br>Products: {ingr_freq.get(nm,0):,}" for nm in nodes_c],
+                hoverinfo="text"))
+        fig = go.Figure(data=edge_traces+node_traces)
+        fig.update_layout(height=720, template=TEMPLATE,
+            showlegend=True, legend=dict(title="Class",x=1.01,y=0.5),
+            xaxis=dict(showgrid=False,zeroline=False,showticklabels=False),
+            yaxis=dict(showgrid=False,zeroline=False,showticklabels=False),
+            margin=dict(t=20,r=160))
         st.plotly_chart(fig, use_container_width=True)
-        insight("Diuretics have the fewest unique ingredients (23) — a largely unexplored formulation space.")
+        insight("Node size = number of connections. Paracetamol is the highest-centrality node (60 connections).")
 
+    # ── Tab 3: Top 25 Pairs Bar ───────────────────────────────────────────────
     with tabs[3]:
-        section("Top 25 Ingredients — Median Price vs Competition")
-        top25_ingr = df.groupby("primary_ingredient").agg(
-            median_price=("price_inr","median"),
-            competition=("product_id","count"),
-            therapeutic_class=("therapeutic_class",lambda x:x.mode()[0])
-        ).reset_index().nlargest(25,"competition")
-        fig = px.scatter(top25_ingr,x="competition",y="median_price",
-            size="competition",color="therapeutic_class",
-            hover_name="primary_ingredient",
-            text="primary_ingredient",
-            color_discrete_sequence=COLORS,template=TEMPLATE,
-            labels={"competition":"# Products","median_price":"Median Price ₹"})
-        fig.update_traces(textposition="top center",textfont_size=9)
-        fig.update_layout(height=520,margin=dict(t=20))
+        section("Top 25 Ingredient Co-occurrence Pairs")
+        top25_pairs = pair_counter.most_common(25)
+        pair_labels = [f"{a} + {b}" for (a,b),_ in top25_pairs]
+        pair_counts = [cnt for _,cnt in top25_pairs]
+        pair_classes = []
+        for (a,b),_ in top25_pairs:
+            ca = ingr_stats[ingr_stats["ingredient"]==a]["primary_class"].values
+            pair_classes.append(ca[0] if len(ca)>0 else "other")
+        fig = go.Figure(go.Bar(
+            x=pair_counts[::-1], y=pair_labels[::-1], orientation="h",
+            marker_color=[class_color_map.get(c,"#888") for c in pair_classes[::-1]],
+            text=[f"{c:,}" for c in pair_counts[::-1]], textposition="outside",
+            hovertemplate="<b>%{y}</b><br>%{x:,} products<extra></extra>"))
+        fig.update_layout(height=720, template=TEMPLATE,
+            margin=dict(t=20,l=10,r=80), xaxis_title="Number of Products")
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Aceclofenac + Paracetamol leads with 6,442 products. "
+                "Amoxycillin + Clavulanic Acid follows at 5,867 — core antibiotic resistance strategy.")
+
+    # ── Tab 4: Co-occurrence Heatmap ─────────────────────────────────────────
+    with tabs[4]:
+        section("Co-occurrence Heatmap — Top 15 Ingredients")
+        top15_nm = [i for i,_ in ingr_freq.most_common(15)]
+        matrix = pd.DataFrame(0, index=top15_nm, columns=top15_nm)
+        for (a,b),cnt in pair_counter.items():
+            if a in top15_nm and b in top15_nm:
+                matrix.loc[a,b]=cnt; matrix.loc[b,a]=cnt
+        fig = go.Figure(data=go.Heatmap(
+            z=matrix.values, x=matrix.columns.tolist(), y=matrix.index.tolist(),
+            colorscale="YlOrRd",
+            hovertemplate="<b>%{y} + %{x}</b><br>%{z:,} products<extra></extra>",
+            text=matrix.values, texttemplate="%{text:,}", textfont=dict(size=9)))
+        fig.update_layout(height=580, template=TEMPLATE,
+            margin=dict(t=20,l=160,b=120), xaxis=dict(tickangle=-35))
         st.plotly_chart(fig, use_container_width=True)
 
+    # ── Tab 5: Class Diversity Bubble ─────────────────────────────────────────
+    with tabs[5]:
+        section("Therapeutic Class: Ingredient Diversity vs Market Size")
+        class_stats = df_exp.groupby("therapeutic_class").agg(
+            unique_ingredients=("ingredient","nunique"),
+            total_products=("product_id","count"),
+            avg_price=("price_inr","mean"),
+            manufacturers=("manufacturer","nunique")
+        ).reset_index()
+        class_stats["prod_per_ingr"] = (class_stats["total_products"]/class_stats["unique_ingredients"]).round(1)
+        fig = px.scatter(class_stats, x="unique_ingredients", y="total_products",
+            size="manufacturers", color="avg_price", text="therapeutic_class",
+            color_continuous_scale="RdYlGn_r", size_max=60,
+            hover_name="therapeutic_class",
+            hover_data={"unique_ingredients":":,","total_products":":,",
+                "manufacturers":":,","prod_per_ingr":":.1f","avg_price":":.2f"},
+            template=TEMPLATE)
+        fig.update_traces(textposition="top center", textfont_size=11)
+        fig.update_layout(height=580, margin=dict(t=20),
+            xaxis_title="Unique Ingredients", yaxis_title="Total Products",
+            coloraxis_colorbar=dict(title="Avg Price ₹"))
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Diuretics has only 23 unique ingredients — the least explored class. "
+                "Antibiotics dominate in both ingredient count and product volume.")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE: ML PRICE PREDICTION
-# ══════════════════════════════════════════════════════════════════════════════
+    # ── Tab 6: Top 8 per Class ────────────────────────────────────────────────
+    with tabs[6]:
+        section("Top 8 Ingredients per Therapeutic Class")
+        cls8 = ["antibiotic","analgesic","antacid","antihistamine",
+                "antidiabetic","antihypertensive","antidepressant","bronchodilator"]
+        fig = make_subplots(rows=4, cols=2,
+            subplot_titles=[c.title() for c in cls8],
+            vertical_spacing=0.07, horizontal_spacing=0.2)
+        for idx, cls in enumerate(cls8):
+            row=idx//2+1; col=idx%2+1
+            sub = (df_exp[df_exp["therapeutic_class"]==cls]
+                .groupby("ingredient").size().sort_values().tail(8))
+            fig.add_trace(go.Bar(x=sub.values, y=sub.index, orientation="h",
+                marker_color=COLORS[idx%len(COLORS)], showlegend=False,
+                hovertemplate="<b>%{y}</b><br>%{x:,} products<extra></extra>"),
+                row=row, col=col)
+        fig.update_layout(height=1200, template=TEMPLATE, margin=dict(t=60))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 7: Combo Strategy Map ─────────────────────────────────────────────
+    with tabs[7]:
+        section("Ingredient Combo Strategy Map — Volume vs Combination Ratio")
+        combo_a = ingr_stats[ingr_stats["total_products"]>=100].copy()
+        med_freq = combo_a["total_products"].median()
+        med_combo = combo_a["combo_ratio"].median()
+        def quadrant(row):
+            hi_v = row["total_products"]>=med_freq; hi_c = row["combo_ratio"]>=med_combo
+            if hi_v and hi_c: return "High Volume Combo"
+            elif hi_v: return "High Volume Solo"
+            elif hi_c: return "Niche Combo"
+            else: return "Niche Solo"
+        combo_a["segment"] = combo_a.apply(quadrant, axis=1)
+        seg_colors = {"High Volume Combo":WARN,"High Volume Solo":ACCENT,
+                      "Niche Combo":GOLD,"Niche Solo":OK}
+        fig = px.scatter(combo_a, x="total_products", y="combo_ratio",
+            color="segment", color_discrete_map=seg_colors,
+            size="manufacturers", size_max=30, hover_name="ingredient",
+            hover_data={"total_products":":,","combo_ratio":":.1f","manufacturers":":,","primary_class":True,"segment":False},
+            log_x=True, template=TEMPLATE)
+        fig.add_vline(x=med_freq, line_dash="dash", line_color="grey", opacity=0.5)
+        fig.add_hline(y=med_combo, line_dash="dash", line_color="grey", opacity=0.5)
+        highlight = ["Paracetamol","Clavulanic Acid","Ornidazole","Azithromycin",
+                     "Domperidone","Metformin","Montelukast","Sulbactam"]
+        for _, row in combo_a[combo_a["ingredient"].isin(highlight)].iterrows():
+            fig.add_annotation(x=row["total_products"], y=row["combo_ratio"],
+                text=row["ingredient"], showarrow=True, arrowhead=2,
+                font=dict(size=9), bgcolor="rgba(255,255,255,0.8)")
+        fig.update_layout(height=580, margin=dict(t=20),
+            xaxis_title="Total Products (log)", yaxis_title="Combination Ratio (%)",
+            legend_title="Segment")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 8: Exclusivity ────────────────────────────────────────────────────
+    with tabs[8]:
+        section("Ingredient Exclusivity — Always Combo vs Always Solo")
+        always_combo = ingr_stats[(ingr_stats["combo_ratio"]==100)&(ingr_stats["total_products"]>=100)] \
+            .nlargest(20,"total_products")
+        always_solo  = ingr_stats[(ingr_stats["combo_ratio"]==0)&(ingr_stats["total_products"]>=50)] \
+            .nlargest(20,"total_products")
+        fig = make_subplots(rows=1, cols=2,
+            subplot_titles=[f"Always in Combos — {len(always_combo)} ingredients",
+                            f"Always Solo — {len(always_solo)} ingredients"],
+            horizontal_spacing=0.15)
+        fig.add_trace(go.Bar(y=always_combo["ingredient"], x=always_combo["total_products"],
+            orientation="h", marker_color=WARN, showlegend=False,
+            hovertemplate="<b>%{y}</b><br>%{x:,}<extra></extra>"), row=1, col=1)
+        fig.add_trace(go.Bar(y=always_solo["ingredient"], x=always_solo["total_products"],
+            orientation="h", marker_color=OK, showlegend=False,
+            hovertemplate="<b>%{y}</b><br>%{x:,}<extra></extra>"), row=1, col=2)
+        fig.update_xaxes(title_text="Total Products", row=1, col=1)
+        fig.update_xaxes(title_text="Total Products", row=1, col=2)
+        fig.update_layout(height=560, template=TEMPLATE, margin=dict(t=50))
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Clavulanic Acid (8,525 products, 100% combo) is always paired with an antibiotic — "
+                "cannot be marketed standalone. These are pure combo revenue plays.")
+
+    # ── Tab 9: Jaccard Overlap ────────────────────────────────────────────────
+    with tabs[9]:
+        section("Manufacturer Ingredient Overlap — Jaccard Similarity (Top 15)")
+        top15_mfr = df["manufacturer"].value_counts().head(15).index.tolist()
+        mfr_ingr_sets = {}
+        for mfr_nm in top15_mfr:
+            ingrs = set()
+            for lst in df[df["manufacturer"]==mfr_nm]["ingredient_names"]:
+                if isinstance(lst, list): ingrs.update(lst)
+            mfr_ingr_sets[mfr_nm] = ingrs
+        sh = lambda n: n.replace(" Pharmaceuticals","").replace(" Pharmaceutical","") \
+                        .replace(" Industries","").replace(" Ltd","").replace(" Limited","").strip()
+        short_mfr = [sh(m) for m in top15_mfr]
+        jac = pd.DataFrame(index=short_mfr, columns=short_mfr, dtype=float)
+        for i,mi in enumerate(top15_mfr):
+            for j,mj in enumerate(top15_mfr):
+                a,b = mfr_ingr_sets[mi], mfr_ingr_sets[mj]
+                jac.iloc[i,j] = len(a&b)/len(a|b) if (a|b) else 0
+        fig = go.Figure(data=go.Heatmap(
+            z=jac.values.astype(float), x=short_mfr, y=short_mfr,
+            colorscale="RdYlGn_r", zmin=0, zmax=1,
+            hovertemplate="<b>%{y}</b> vs <b>%{x}</b><br>Jaccard: %{z:.2f}<extra></extra>",
+            text=np.round(jac.values.astype(float),2),
+            texttemplate="%{text:.2f}", textfont=dict(size=10)))
+        fig.update_layout(height=600, template=TEMPLATE,
+            margin=dict(t=20,l=160,b=130), xaxis=dict(tickangle=-40))
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Sun Pharma ↔ Intas have the highest overlap (0.56 Jaccard) — most direct ingredient competitors. "
+                "Most manufacturers share 40–55% of their portfolios — minimal differentiation.")
+
+    # ── Tab 10: Portfolio Differentiation ─────────────────────────────────────
+    with tabs[10]:
+        section("Ingredient Portfolio Differentiation Score")
+        uniq_rows = []
+        for mfr_nm in top15_mfr:
+            mfr_set = mfr_ingr_sets[mfr_nm]
+            others  = set(i for m,s in mfr_ingr_sets.items() if m!=mfr_nm for i in s)
+            unique  = mfr_set - others
+            shared  = mfr_set & others
+            uniq_rows.append({"manufacturer":sh(mfr_nm),
+                "total":len(mfr_set),"unique":len(unique),"shared":len(shared),
+                "pct_unique":len(unique)/len(mfr_set)*100 if mfr_set else 0})
+        uniq_df = pd.DataFrame(uniq_rows).sort_values("pct_unique")
+        fig = go.Figure()
+        fig.add_trace(go.Bar(y=uniq_df["manufacturer"], x=uniq_df["shared"],
+            name="Shared with Others", orientation="h", marker_color="#AED6F1",
+            hovertemplate="<b>%{y}</b><br>Shared: %{x:,}<extra></extra>"))
+        fig.add_trace(go.Bar(y=uniq_df["manufacturer"], x=uniq_df["unique"],
+            name="Unique to Manufacturer", orientation="h", marker_color=ACCENT,
+            hovertemplate="<b>%{y}</b><br>Unique: %{x:,}<extra></extra>"))
+        for _, row in uniq_df.iterrows():
+            fig.add_annotation(x=row["total"]+5, y=row["manufacturer"],
+                text=f"{row['pct_unique']:.1f}% unique", showarrow=False,
+                font=dict(size=9, color="#555"))
+        fig.update_layout(barmode="stack", height=520, template=TEMPLATE,
+            margin=dict(t=20,r=140),
+            xaxis_title="Number of Ingredients",
+            legend=dict(orientation="h",y=1.05,x=0.5,xanchor="center"))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 11: Price Variance Map ────────────────────────────────────────────
+    with tabs[11]:
+        section("Ingredient Price Variance Map (CV% vs Competition)")
+        ingr_price = df_exp.groupby("ingredient")["price_inr"].agg(
+            min_p="min",max_p="max",median="median",std="std",count="count").reset_index()
+        ingr_price = ingr_price[ingr_price["count"]>=30]
+        ingr_price["cv"]          = (ingr_price["std"]/ingr_price["median"]*100).round(1)
+        ingr_price["range_ratio"] = (ingr_price["max_p"]/ingr_price["min_p"].replace(0,np.nan)).round(0)
+        ingr_price = ingr_price.merge(
+            ingr_stats[["ingredient","primary_class","manufacturers"]], on="ingredient", how="left")
+        fig = px.scatter(ingr_price[ingr_price["cv"]<500],
+            x="count", y="cv", color="primary_class", size="range_ratio",
+            size_max=35, hover_name="ingredient",
+            hover_data={"count":":,","cv":":.1f","min_p":":.2f","max_p":":,.2f","range_ratio":":.0f","manufacturers":":,"},
+            log_x=True, color_discrete_sequence=COLORS, template=TEMPLATE)
+        fig.add_hline(y=100, line_dash="dash", line_color="orange", opacity=0.6,
+            annotation_text="CV=100% (high variance)", annotation_position="right")
+        fig.update_layout(height=560, margin=dict(t=20),
+            xaxis_title="Products (log)", yaxis_title="Price CV%", legend_title="Class")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 12: Median Price Bar ──────────────────────────────────────────────
+    with tabs[12]:
+        section("Median Price by Ingredient (Top 30 Most Common)")
+        top30_p = ingr_stats.nlargest(30,"total_products").sort_values("median_price")
+        fig = go.Figure(go.Bar(
+            y=top30_p["ingredient"], x=top30_p["median_price"], orientation="h",
+            marker_color=[class_color_map.get(c,"#888") for c in top30_p["primary_class"]],
+            text=top30_p["median_price"].apply(lambda x:f"₹{x:.1f}"),
+            textposition="outside",
+            hovertemplate="<b>%{y}</b><br>Median: ₹%{x:.2f}<extra></extra>"))
+        fig.update_layout(height=700, template=TEMPLATE, margin=dict(t=20,l=10,r=80),
+            xaxis_title="Median Product Price ₹", showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tab 13: Portfolio Heatmap ─────────────────────────────────────────────
+    with tabs[13]:
+        section("Manufacturer × Ingredient Portfolio Heatmap (Top 10 × Top 25)")
+        top10_mfr2 = df["manufacturer"].value_counts().head(10).index.tolist()
+        top25_ingr2 = [i for i,_ in ingr_freq.most_common(25)]
+        portfolio = (df_exp[df_exp["manufacturer"].isin(top10_mfr2) &
+                            df_exp["ingredient"].isin(top25_ingr2)]
+            .groupby(["manufacturer","ingredient"]).size().unstack(fill_value=0))
+        port_norm = portfolio.div(portfolio.max(axis=1), axis=0)*100
+        sh2 = lambda n: n.replace(" Pharmaceuticals","").replace(" Pharmaceutical","") \
+                         .replace(" Industries","").replace(" Ltd","").strip()
+        short_m = [sh2(m) for m in portfolio.index]
+        fig = make_subplots(rows=1, cols=2,
+            subplot_titles=["Raw Product Count","Normalised (% of max per manufacturer)"],
+            horizontal_spacing=0.08)
+        fig.add_trace(go.Heatmap(z=portfolio.values, x=portfolio.columns.tolist(), y=short_m,
+            colorscale="Blues", colorbar=dict(x=0.45,len=0.8),
+            hovertemplate="<b>%{y}</b> — %{x}<br>%{z:,}<extra></extra>"), row=1, col=1)
+        fig.add_trace(go.Heatmap(z=port_norm.values.round(1), x=port_norm.columns.tolist(), y=short_m,
+            colorscale="YlOrRd", colorbar=dict(x=1.01,len=0.8),
+            hovertemplate="<b>%{y}</b> — %{x}<br>%{z:.1f}%<extra></extra>"), row=1, col=2)
+        fig.update_layout(height=460, template=TEMPLATE, margin=dict(t=50,b=120,l=160))
+        for c in [1,2]: fig.update_xaxes(tickangle=-40, row=1, col=c)
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Right panel normalised — reveals strategic emphasis regardless of portfolio size. "
+                "Paracetamol and Amoxycillin are universal anchor ingredients across all top manufacturers.")
+
+    # ── Tab 14: Ingredient Sunburst ───────────────────────────────────────────
+    with tabs[14]:
+        section("Ingredient Universe: Class → Ingredient → Solo / Combo Split")
+        cls_sun = ["antibiotic","analgesic","antacid","antihistamine",
+                   "antidiabetic","antihypertensive","antidepressant","bronchodilator"]
+        top_sun = ingr_stats[(ingr_stats["total_products"]>=500) &
+                              ingr_stats["primary_class"].isin(cls_sun)].copy()
+        sun_rows = []
+        for _,row in top_sun.iterrows():
+            if row["solo_products"]>0:
+                sun_rows.append({"class":row["primary_class"].title(),
+                    "ingredient":row["ingredient"],"type":"Solo","count":int(row["solo_products"])})
+            if row["combo_products"]>0:
+                sun_rows.append({"class":row["primary_class"].title(),
+                    "ingredient":row["ingredient"],"type":"Combo","count":int(row["combo_products"])})
+        sun_df = pd.DataFrame(sun_rows)
+        fig = px.sunburst(sun_df, path=["class","ingredient","type"],
+            values="count", color="type",
+            color_discrete_map={"Solo":OK,"Combo":WARN}, template=TEMPLATE)
+        fig.update_traces(textinfo="label+percent parent",
+            hovertemplate="<b>%{label}</b><br>%{value:,}<br>%{percentParent:.1%}<extra></extra>")
+        fig.update_layout(height=680, margin=dict(t=20))
+        st.plotly_chart(fig, use_container_width=True)
+        insight("Click any class or ingredient to drill down. "
+                "Green = solo formulations, Red = combination formulations. "
+                "Clavulanic Acid appears entirely in red — no solo products exist.")
+
+
+
 elif page == "🤖 ML: Price Prediction":
     st.title("🤖 ML: Price Prediction")
     st.caption("Random Forest Regressor | 200 trees | Log-transformed target | 80/20 split")
