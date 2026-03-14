@@ -26,12 +26,29 @@ st.set_page_config(
 )
 
 # ── Theme constants ───────────────────────────────────────────────────────────
-ACCENT     = "#1B4F72"
-WARN       = "#E74C3C"
-OK         = "#27AE60"
-GOLD       = "#F39C12"
-COLORS     = px.colors.qualitative.Bold
-TEMPLATE   = "plotly_white"
+# Precision Science palette — deep navy base, phosphor accent, amber warning
+C_BG        = "#080D14"        # near-black navy
+C_SURFACE   = "#0E1620"        # card surface
+C_SURFACE2  = "#131E2C"        # elevated surface
+C_BORDER    = "#1C2D3F"        # subtle border
+C_ACCENT    = "#00E5A0"        # phosphor green
+C_ACCENT2   = "#00B8FF"        # electric blue
+C_WARN      = "#FF5D5D"        # coral red
+C_GOLD      = "#FFB830"        # amber
+C_PURPLE    = "#C084FC"        # violet
+C_TEXT      = "#E8EFF7"        # primary text
+C_TEXT2     = "#7A92AA"        # secondary text
+C_TEXT3     = "#3D5166"        # muted text
+
+# Legacy aliases for the 1800 lines of chart code below — don't change these
+ACCENT      = C_ACCENT2        # blue used in most charts
+WARN        = C_WARN
+OK          = C_ACCENT         # green
+GOLD        = C_GOLD
+COLORS      = ["#00B8FF","#00E5A0","#FFB830","#FF5D5D","#C084FC",
+               "#38BDF8","#34D399","#FB923C","#F472B6","#818CF8",
+               "#67E8F9","#86EFAC","#FDE68A","#FCA5A5","#DDD6FE"]
+TEMPLATE    = "plotly_dark"
 
 def hex_to_rgba(color, alpha=0.15):
     color = color.strip()
@@ -44,63 +61,299 @@ def hex_to_rgba(color, alpha=0.15):
     return color
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+/* ── Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-    html, body, [class*="css"] { font-family: 'IBM Plex Sans', sans-serif; }
+/* ── Base ── */
+html, body, [class*="css"] {{
+    font-family: 'Outfit', sans-serif;
+    background-color: {C_BG};
+    color: {C_TEXT};
+}}
+.main {{ background: {C_BG}; }}
+.block-container {{ padding-top: 1.8rem; padding-bottom: 3rem; max-width: 1400px; }}
 
-    .main { background: #F7F9FC; }
+/* Animated page background — subtle moving grid */
+.main::before {{
+    content: '';
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-image:
+        linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 0;
+    animation: gridShift 20s linear infinite;
+}}
+@keyframes gridShift {{
+    0%   {{ background-position: 0 0; }}
+    100% {{ background-position: 40px 40px; }}
+}}
 
-    section[data-testid="stSidebar"] {
-        background: #0D2137;
-        border-right: 2px solid #1B4F72;
-    }
-    section[data-testid="stSidebar"] * { color: #E8F4FD !important; }
-    section[data-testid="stSidebar"] .stSelectbox label,
-    section[data-testid="stSidebar"] .stRadio label { color: #A9CCE3 !important; }
+/* ── Sidebar ── */
+section[data-testid="stSidebar"] {{
+    background: linear-gradient(175deg, #06101A 0%, #0A1829 60%, #081422 100%) !important;
+    border-right: 1px solid {C_BORDER};
+}}
+section[data-testid="stSidebar"]::after {{
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background-image: radial-gradient(ellipse at 30% 20%, rgba(0,229,160,0.06) 0%, transparent 60%);
+    pointer-events: none;
+}}
+section[data-testid="stSidebar"] * {{ color: {C_TEXT} !important; }}
+section[data-testid="stSidebar"] .stRadio label {{ color: {C_TEXT2} !important; font-size: 0.88rem; }}
+section[data-testid="stSidebar"] .stRadio [data-baseweb="radio"] {{
+    background: transparent;
+}}
+section[data-testid="stSidebar"] hr {{ border-color: {C_BORDER}; }}
 
-    .kpi-card {
-        background: white;
-        border-radius: 12px;
-        padding: 20px 16px;
-        text-align: center;
-        box-shadow: 0 2px 12px rgba(27,79,114,0.10);
-        border-top: 4px solid #1B4F72;
-        margin-bottom: 8px;
-    }
-    .kpi-value { font-size: 2rem; font-weight: 700; color: #1B4F72; line-height: 1.1; }
-    .kpi-label { font-size: 0.78rem; color: #7F8C8D; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
-    .kpi-card.warn  { border-top-color: #E74C3C; } .kpi-card.warn .kpi-value  { color: #E74C3C; }
-    .kpi-card.ok    { border-top-color: #27AE60; } .kpi-card.ok .kpi-value    { color: #27AE60; }
-    .kpi-card.gold  { border-top-color: #F39C12; } .kpi-card.gold .kpi-value  { color: #F39C12; }
-    .kpi-card.purple{ border-top-color: #8E44AD; } .kpi-card.purple .kpi-value{ color: #8E44AD; }
+/* ── KPI Cards ── */
+.kpi-card {{
+    background: linear-gradient(135deg, {C_SURFACE} 0%, {C_SURFACE2} 100%);
+    border: 1px solid {C_BORDER};
+    border-radius: 16px;
+    padding: 22px 18px 18px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 10px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}}
+.kpi-card::before {{
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, {C_ACCENT2}, {C_ACCENT});
+    border-radius: 16px 16px 0 0;
+}}
+.kpi-card::after {{
+    content: '';
+    position: absolute; top: -40px; right: -40px;
+    width: 100px; height: 100px;
+    background: radial-gradient(circle, rgba(0,229,160,0.08) 0%, transparent 70%);
+    border-radius: 50%;
+}}
+.kpi-card:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0,229,160,0.12);
+}}
+.kpi-value {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.85rem; font-weight: 700;
+    color: {C_TEXT}; line-height: 1.1;
+    letter-spacing: -0.02em;
+}}
+.kpi-label {{
+    font-size: 0.72rem; color: {C_TEXT2};
+    margin-top: 6px; text-transform: uppercase;
+    letter-spacing: 0.10em; font-weight: 500;
+}}
+.kpi-card.warn::before  {{ background: linear-gradient(90deg, {C_WARN}, #FF8C42); }}
+.kpi-card.warn  .kpi-value  {{ color: {C_WARN}; }}
+.kpi-card.ok::before    {{ background: linear-gradient(90deg, {C_ACCENT}, #00C896); }}
+.kpi-card.ok    .kpi-value  {{ color: {C_ACCENT}; }}
+.kpi-card.gold::before  {{ background: linear-gradient(90deg, {C_GOLD}, #FFD666); }}
+.kpi-card.gold  .kpi-value  {{ color: {C_GOLD}; }}
+.kpi-card.purple::before{{ background: linear-gradient(90deg, {C_PURPLE}, #E879F9); }}
+.kpi-card.purple .kpi-value {{ color: {C_PURPLE}; }}
 
-    .section-header {
-        font-size: 1.35rem; font-weight: 700; color: #0D2137;
-        border-left: 5px solid #1B4F72; padding-left: 12px;
-        margin: 28px 0 16px 0;
-    }
-    .insight-box {
-        background: #EAF2FF; border-left: 4px solid #1B4F72;
-        padding: 14px 18px; border-radius: 6px; margin: 12px 0;
-        font-size: 0.92rem; color: #1A2E40;
-    }
-    .metric-badge {
-        display: inline-block; background: #1B4F72; color: white;
-        border-radius: 20px; padding: 3px 12px; font-size: 0.78rem;
-        font-weight: 600; margin: 2px;
-    }
-    .metric-badge.warn { background: #E74C3C; }
-    .metric-badge.ok   { background: #27AE60; }
-    .metric-badge.gold { background: #F39C12; }
+/* ── Section Headers ── */
+.section-header {{
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.45rem; font-weight: 400;
+    color: {C_TEXT};
+    display: flex; align-items: center; gap: 12px;
+    margin: 32px 0 18px 0;
+    letter-spacing: -0.01em;
+}}
+.section-header::before {{
+    content: '';
+    display: inline-block;
+    width: 4px; height: 28px;
+    background: linear-gradient(180deg, {C_ACCENT2}, {C_ACCENT});
+    border-radius: 2px; flex-shrink: 0;
+}}
+.section-header::after {{
+    content: '';
+    flex: 1; height: 1px;
+    background: linear-gradient(90deg, {C_BORDER}, transparent);
+    margin-left: 12px;
+}}
 
-    div[data-testid="stTabs"] button {
-        font-weight: 600; font-size: 0.85rem;
-    }
-    .stAlert { border-radius: 8px; }
+/* ── Insight Box ── */
+.insight-box {{
+    background: linear-gradient(135deg,
+        rgba(0,184,255,0.06) 0%,
+        rgba(0,229,160,0.04) 100%);
+    border: 1px solid rgba(0,184,255,0.2);
+    border-left: 3px solid {C_ACCENT2};
+    padding: 14px 18px;
+    border-radius: 0 10px 10px 0;
+    margin: 14px 0;
+    font-size: 0.90rem; color: {C_TEXT2};
+    line-height: 1.6;
+    position: relative;
+}}
+.insight-box::before {{
+    content: '◈';
+    color: {C_ACCENT2}; font-size: 0.9rem;
+    margin-right: 8px; opacity: 0.8;
+}}
+
+/* ── Metric Badges ── */
+.metric-badge {{
+    display: inline-block;
+    background: rgba(0,184,255,0.12);
+    color: {C_ACCENT2};
+    border: 1px solid rgba(0,184,255,0.25);
+    border-radius: 6px; padding: 2px 10px;
+    font-size: 0.75rem; font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.03em; margin: 2px;
+}}
+.metric-badge.warn {{
+    background: rgba(255,93,93,0.12); color: {C_WARN};
+    border-color: rgba(255,93,93,0.25);
+}}
+.metric-badge.ok {{
+    background: rgba(0,229,160,0.12); color: {C_ACCENT};
+    border-color: rgba(0,229,160,0.25);
+}}
+.metric-badge.gold {{
+    background: rgba(255,184,48,0.12); color: {C_GOLD};
+    border-color: rgba(255,184,48,0.25);
+}}
+
+/* ── Tabs ── */
+div[data-testid="stTabs"] button {{
+    font-weight: 500; font-size: 0.83rem;
+    color: {C_TEXT2} !important;
+    background: transparent !important;
+    border-bottom: 2px solid transparent !important;
+    transition: all 0.2s;
+}}
+div[data-testid="stTabs"] button:hover {{
+    color: {C_TEXT} !important;
+}}
+div[data-testid="stTabs"] button[aria-selected="true"] {{
+    color: {C_ACCENT} !important;
+    border-bottom-color: {C_ACCENT} !important;
+    font-weight: 600 !important;
+}}
+
+/* ── Dataframes ── */
+[data-testid="stDataFrame"] {{
+    border: 1px solid {C_BORDER};
+    border-radius: 10px;
+    overflow: hidden;
+}}
+
+/* ── Plotly charts ── */
+[data-testid="stPlotlyChart"] {{
+    background: transparent !important;
+    border: 1px solid {C_BORDER};
+    border-radius: 12px; overflow: hidden;
+}}
+
+/* ── Headings ── */
+h1 {{
+    font-family: 'DM Serif Display', serif !important;
+    font-weight: 400 !important;
+    font-size: 2.2rem !important;
+    color: {C_TEXT} !important;
+    letter-spacing: -0.02em !important;
+    line-height: 1.2 !important;
+}}
+h1::after {{
+    content: '';
+    display: block; width: 48px; height: 3px; margin-top: 8px;
+    background: linear-gradient(90deg, {C_ACCENT2}, {C_ACCENT});
+    border-radius: 2px;
+}}
+h2, h3 {{
+    font-family: 'Outfit', sans-serif !important;
+    color: {C_TEXT} !important;
+}}
+
+/* ── Spinners / alerts ── */
+.stAlert {{ border-radius: 10px; border: none; }}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {{ width: 6px; height: 6px; }}
+::-webkit-scrollbar-track {{ background: {C_BG}; }}
+::-webkit-scrollbar-thumb {{ background: {C_BORDER}; border-radius: 3px; }}
+::-webkit-scrollbar-thumb:hover {{ background: {C_TEXT3}; }}
+
+/* ── Caption / small text ── */
+.stCaption, [data-testid="stCaptionContainer"] p {{
+    color: {C_TEXT2} !important; font-size: 0.82rem !important;
+}}
+
+/* ── Progress bars ── */
+[data-testid="stProgressBar"] > div {{
+    background: linear-gradient(90deg, {C_ACCENT2}, {C_ACCENT}) !important;
+    border-radius: 4px;
+}}
+
+/* ── Sidebar logo area ── */
+.sidebar-brand {{
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.5rem; font-weight: 400;
+    color: {C_TEXT} !important;
+    letter-spacing: -0.01em;
+    padding: 8px 0 4px;
+    display: flex; align-items: center; gap: 10px;
+}}
+.sidebar-brand span {{
+    display: inline-block;
+    background: linear-gradient(135deg, {C_ACCENT2}, {C_ACCENT});
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}}
+.sidebar-stat {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem; color: {C_TEXT2};
+    padding: 2px 0; border-bottom: 1px solid {C_BORDER};
+    display: flex; justify-content: space-between; align-items: center;
+    margin: 3px 0;
+}}
+.sidebar-stat b {{ color: {C_ACCENT}; }}
 </style>
 """, unsafe_allow_html=True)
+
+
+# ── Plotly dark theme applier ─────────────────────────────────────────────────
+def _apply_plotly_theme(fig, height=None):
+    """Apply the Precision Science dark theme to any plotly figure."""
+    updates = dict(
+        paper_bgcolor="rgba(14,22,32,0)",
+        plot_bgcolor="rgba(14,22,32,0)",
+        font=dict(family="Outfit, sans-serif", color=C_TEXT, size=12),
+        legend=dict(
+            bgcolor="rgba(14,22,32,0.7)",
+            bordercolor=C_BORDER, borderwidth=1,
+            font=dict(size=11, color=C_TEXT2)),
+        margin=dict(t=40, b=40, l=60, r=20),
+        hoverlabel=dict(
+            bgcolor=C_SURFACE2, bordercolor=C_BORDER,
+            font=dict(family="JetBrains Mono", size=12, color=C_TEXT)),
+        colorway=COLORS,
+    )
+    if height:
+        updates["height"] = height
+    fig.update_layout(**updates)
+    fig.update_xaxes(
+        gridcolor=C_BORDER, linecolor=C_BORDER,
+        tickcolor=C_TEXT3, tickfont=dict(color=C_TEXT2),
+        title_font=dict(color=C_TEXT2), zeroline=False)
+    fig.update_yaxes(
+        gridcolor=C_BORDER, linecolor=C_BORDER,
+        tickcolor=C_TEXT3, tickfont=dict(color=C_TEXT2),
+        title_font=dict(color=C_TEXT2), zeroline=False)
+    return fig
+
+
+
 
 
 # ╔══════════════════════════════════════════════════════════════════════════════
@@ -363,7 +616,7 @@ def section(title):
     st.markdown(f'<div class="section-header">{title}</div>', unsafe_allow_html=True)
 
 def insight(text):
-    st.markdown(f'<div class="insight-box">💡 {text}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="insight-box">{text}</div>', unsafe_allow_html=True)
 
 def badge(text, style="default"):
     cls = {"warn":"warn","ok":"ok","gold":"gold"}.get(style,"")
@@ -382,8 +635,16 @@ df = M["df"]  # updated with risk scores
 # SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("## 💊 Pharma Intel")
-    st.markdown("---")
+    st.markdown(f"""
+    <div class='sidebar-brand'>
+        <span>💊</span> Pharma<span>Intel</span>
+    </div>
+    <div style='font-size:0.72rem;color:{C_TEXT3};margin-bottom:16px;letter-spacing:0.06em;text-transform:uppercase;'>
+        Indian Pharma Intelligence Platform
+    </div>
+    """, unsafe_allow_html=True)
+    st.divider()
+
     page = st.radio("Navigation", [
         "🏠 Overview",
         "📊 Market Intelligence",
@@ -395,18 +656,21 @@ with st.sidebar:
         "🏷️ ML: Price Tier Classifier",
         "📈 ML: Demand Scorer",
         "🎯 Model Comparison",
-    ])
-    st.markdown("---")
-    st.caption("📊 Market: 9 charts | 💰 Price: 13 charts | 🧪 Ingredient: 15 charts")
-    st.markdown("---")
+    ], label_visibility="collapsed")
+
+    st.divider()
     st.markdown(f"""
-    <div style='font-size:0.75rem; color:#A9CCE3;'>
-    <b>Dataset</b><br>
-    {len(df):,} products<br>
-    {df['manufacturer'].nunique():,} manufacturers<br>
-    {df['primary_ingredient'].nunique():,} ingredients<br>
-    {df['therapeutic_class'].nunique()} therapeutic classes
-    </div>
+    <div style='font-size:0.72rem;color:{C_TEXT3};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;'>Dataset</div>
+    <div class='sidebar-stat'><span>Products</span><b>{len(df):,}</b></div>
+    <div class='sidebar-stat'><span>Manufacturers</span><b>{df['manufacturer'].nunique():,}</b></div>
+    <div class='sidebar-stat'><span>Ingredients</span><b>{df['primary_ingredient'].nunique():,}</b></div>
+    <div class='sidebar-stat'><span>Classes</span><b>{df['therapeutic_class'].nunique()}</b></div>
+    <div style='height:12px;'></div>
+    <div style='font-size:0.72rem;color:{C_TEXT3};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;'>Coverage</div>
+    <div class='sidebar-stat'><span>Market charts</span><b style='color:{C_ACCENT2};'>9</b></div>
+    <div class='sidebar-stat'><span>Price charts</span><b style='color:{C_GOLD};'>13</b></div>
+    <div class='sidebar-stat'><span>Ingredient charts</span><b style='color:{C_ACCENT};'>15</b></div>
+    <div class='sidebar-stat'><span>ML models</span><b style='color:{C_PURPLE};'>5</b></div>
     """, unsafe_allow_html=True)
 
 
@@ -426,7 +690,7 @@ if page == "🏠 Overview":
     with c5: kpi("Median Price ₹", df["price_inr"].median(), "gold", "₹{:.0f}")
     with c6: kpi("Combo Drugs %", df["is_combo"].mean()*100, "ok", "{:.1f}%")
 
-    st.markdown("---")
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
 
     with col1:
@@ -434,11 +698,14 @@ if page == "🏠 Overview":
         tc = df["therapeutic_class"].value_counts().head(11).reset_index()
         tc.columns = ["class","count"]
         fig = px.bar(tc, y="class", x="count", orientation="h",
-                     color="count", color_continuous_scale="Blues",
+                     color="count",
+                     color_continuous_scale=[[0,C_BORDER],[0.4,C_ACCENT2],[1,C_ACCENT]],
                      template=TEMPLATE)
-        fig.update_layout(height=380, showlegend=False, margin=dict(t=10,b=10),
+        _apply_plotly_theme(fig, height=380)
+        fig.update_layout(showlegend=False, margin=dict(t=10,b=10),
                           coloraxis_showscale=False)
         fig.update_yaxes(title=""); fig.update_xaxes(title="Products")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
@@ -446,31 +713,46 @@ if page == "🏠 Overview":
         fig = go.Figure()
         fig.add_trace(go.Histogram(
             x=df["price_inr"].clip(0,500), nbinsx=60,
-            marker_color=ACCENT, opacity=0.8
+            marker_color=C_ACCENT2, opacity=0.85,
+            marker_line_color=C_BG, marker_line_width=0.4,
         ))
-        fig.add_vline(x=df["price_inr"].median(), line_dash="dash", line_color=WARN,
-                      annotation_text=f"Median ₹{df['price_inr'].median():.0f}")
-        fig.update_layout(height=380, template=TEMPLATE, margin=dict(t=10,b=10),
+        fig.add_vline(x=df["price_inr"].median(), line_dash="dash", line_color=C_GOLD,
+                      annotation_text=f"Median ₹{df['price_inr'].median():.0f}",
+                      annotation_font_color=C_GOLD)
+        _apply_plotly_theme(fig, height=380)
+        fig.update_layout(margin=dict(t=10,b=10),
                           xaxis_title="Price ₹ (capped at 500)", yaxis_title="Count")
         st.plotly_chart(fig, use_container_width=True)
 
     section("Module Summary")
-    modules = [
-        ("📊 Market Intelligence", "Treemap, heatmaps, Lorenz curve, competitive landscape"),
-        ("💰 Price Analytics", "Price tiers, dosage premium, combo premium, outlier explorer"),
-        ("🧪 Ingredient Intelligence", "Co-occurrence network, combo strategy, portfolio heatmap"),
-        ("🤖 Price Prediction", f"RF Regressor · R²={M['r2_log']:.4f} · MAE=₹{M['mae']:.0f} · Acc±25%={M['acc_25']:.1f}%"),
-        ("⚠️ Discontinuation Risk", f"RF Classifier · AUC={M['auc_d']:.4f} · Recall(disc)={M['rec_disc']:.4f}"),
-        ("🏭 Segmentation", f"K-Means K=5 · Silhouette={M['sil']:.4f} · VarExp={M['var_exp']*100:.1f}%"),
-        ("🏷️ Price Tier", f"4-class RF · Acc={M['acc_t']:.4f} · Prec(wt)={M['prec_t_w']:.4f}"),
-        ("📈 Demand Scorer", f"Rule-based · {len(M['demand_ingr']):,} ingredients · Top: Glimepiride 11.54"),
+    MODULE_META = [
+        ("📊", "Market Intelligence",    "Treemap · Heatmaps · Lorenz Curve · Competitive Landscape",                 C_ACCENT2,  "9 charts"),
+        ("💰", "Price Analytics",         "Price Tiers · Combo Premium · Dosage Premium · Outlier Explorer",            C_GOLD,     "13 charts"),
+        ("🧪", "Ingredient Intelligence", "Co-occurrence Network · Combo Strategy · Portfolio Heatmap",                C_ACCENT,   "15 charts"),
+        ("🤖", "Price Prediction",        f"RF Regressor · R²={M['r2_log']:.4f} · MAE=₹{M['mae']:.0f} · Acc±25%={M['acc_25']:.1f}%", C_PURPLE, "ML"),
+        ("⚠️", "Discontinuation Risk",    f"RF Classifier · AUC={M['auc_d']:.4f} · Recall(disc)={M['rec_disc']:.4f}", C_WARN,     "ML"),
+        ("🏭", "Segmentation",            f"K-Means K=5 · Silhouette={M['sil']:.4f} · VarExp={M['var_exp']*100:.1f}%",C_ACCENT2,  "ML"),
+        ("🏷️", "Price Tier",              f"4-class RF · Acc={M['acc_t']:.4f} · Prec(wt)={M['prec_t_w']:.4f}",       C_GOLD,     "ML"),
+        ("📈", "Demand Scorer",           f"Rule-based · {len(M['demand_ingr']):,} ingredients · Top: Glimepiride 11.54", C_ACCENT, "ML"),
     ]
-    for i in range(0, len(modules), 2):
+    for i in range(0, len(MODULE_META), 2):
         ca, cb = st.columns(2)
-        for col_obj, (name, desc) in zip([ca,cb], modules[i:i+2]):
+        for col_obj, meta in zip([ca, cb], MODULE_META[i:i+2]):
+            icon, name, desc, color, tag = meta
             with col_obj:
-                st.markdown(f"**{name}**")
-                st.caption(desc)
+                st.markdown(f"""
+                <div style='background:linear-gradient(135deg,{C_SURFACE} 0%,{C_SURFACE2} 100%);
+                    border:1px solid {C_BORDER}; border-left:3px solid {color};
+                    border-radius:10px; padding:14px 16px; margin-bottom:8px;'>
+                    <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
+                        <div style='font-size:1.1rem;'>{icon}</div>
+                        <div style='font-family:JetBrains Mono,monospace;font-size:0.68rem;
+                            color:{color};background:rgba(0,0,0,0.2);padding:2px 8px;
+                            border-radius:4px;border:1px solid {color}40;'>{tag}</div>
+                    </div>
+                    <div style='font-weight:600;color:{C_TEXT};font-size:0.92rem;margin:6px 0 3px;'>{name}</div>
+                    <div style='font-size:0.76rem;color:{C_TEXT2};line-height:1.4;'>{desc}</div>
+                </div>""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -529,6 +811,7 @@ elif page == "📊 Market Intelligence":
         fig.update_traces(textinfo="label+value+percent root",
             hovertemplate="<b>%{label}</b><br>Products: %{value:,}<br>Avg Price: ₹%{color:.2f}<extra></extra>")
         fig.update_layout(height=640, margin=dict(t=20,b=10))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Size = product count | Color = avg price (darker red = higher). "
                 "Sun Pharma dominates across antibiotics and analgesics.")
@@ -552,6 +835,7 @@ elif page == "📊 Market Intelligence":
             margin=dict(t=20,r=90),
             legend=dict(orientation="h",y=1.02,x=0.5,xanchor="center"),
             xaxis_title="Number of Products")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 2: Portfolio Strategy Bubble ─────────────────────────────────────
@@ -574,9 +858,10 @@ elif page == "📊 Market Intelligence":
         for label,xr,yr in [("Volume Leaders",0.85,0.08),("Premium Specialists",0.08,0.92),
                              ("Market Dominators",0.85,0.92),("Niche Players",0.08,0.08)]:
             fig.add_annotation(xref="paper",yref="paper",x=xr,y=yr,text=f"<i>{label}</i>",
-                showarrow=False,font=dict(size=9,color="#777"),
+                showarrow=False,font=dict(size=9,color=C_TEXT3),
                 bgcolor="rgba(255,255,255,0.6)",bordercolor="#ccc",borderwidth=1)
         fig.update_layout(height=640, margin=dict(t=20))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Bottom-right quadrant = Volume Leaders (high portfolio, lower avg price). "
                 "Top-left = Premium Specialists. Color intensity = discontinuation risk.")
@@ -595,12 +880,13 @@ elif page == "📊 Market Intelligence":
                     for n in heat.index]
         fig = go.Figure(data=go.Heatmap(
             z=heat.values, x=[c.title() for c in heat.columns], y=short_y,
-            colorscale="Blues", hoverongaps=False,
+            colorscale=[[0,"#0A1829"],[0.3,"#1C4D7A"],[1,"#00B8FF"]], hoverongaps=False,
             text=heat.values, texttemplate="%{text}", textfont=dict(size=10),
             hovertemplate="<b>%{y}</b><br>%{x}: %{z:,} products<extra></extra>"))
         fig.update_layout(height=520, template=TEMPLATE,
             margin=dict(t=20,l=200,b=80),
             xaxis=dict(tickangle=-30))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 4: Top Manufacturers per Class ───────────────────────────────────
@@ -624,6 +910,7 @@ elif page == "📊 Market Intelligence":
                 hovertemplate="<b>%{y}</b><br>Products: %{x}<extra></extra>"),
                 row=row, col=col)
         fig.update_layout(height=1400, template=TEMPLATE, margin=dict(t=50,l=20))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 5: Discontinuation Risk ───────────────────────────────────────────
@@ -656,6 +943,7 @@ elif page == "📊 Market Intelligence":
         fig.update_xaxes(title_text="Disc. Rate (%)", row=1, col=1)
         fig.update_xaxes(title_text="Total Products",  row=1, col=2)
         fig.update_yaxes(title_text="Disc. Rate (%)",  row=1, col=2)
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 6: Price Distribution Violin per Manufacturer ────────────────────
@@ -683,6 +971,7 @@ elif page == "📊 Market Intelligence":
         fig.update_layout(height=560, template=TEMPLATE,
             showlegend=False, margin=dict(t=20,r=120),
             yaxis_title="Price ₹", xaxis_title="Manufacturer")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 7: Avg Price by Therapeutic Class ────────────────────────────────
@@ -710,6 +999,7 @@ elif page == "📊 Market Intelligence":
         fig.update_layout(height=460, template=TEMPLATE, margin=dict(t=20),
             yaxis_title="Price ₹",
             legend=dict(orientation="h",y=1.05,x=0.5,xanchor="center"))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Mean >> Median in every class signals heavy right-skew from specialty products. "
                 "Analgesics have the lowest median (₹48) — most commoditised class.")
@@ -737,6 +1027,7 @@ elif page == "📊 Market Intelligence":
             xaxis_title="% of Manufacturers (ranked by size)",
             yaxis_title="Cumulative Market Share (%)",
             legend=dict(x=0.7,y=0.3))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Top 1% of manufacturers control ~20% of products — "
                 "the market is highly fragmented across 7,648 manufacturers.")
@@ -797,6 +1088,7 @@ elif page == "💰 Price Analytics":
         fig.update_yaxes(title_text="Products", row=1, col=1)
         fig.update_yaxes(title_text="Cumulative %", row=1, col=2)
         fig.update_layout(height=460, template=TEMPLATE, showlegend=False, margin=dict(t=50))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight(f"{under_100:.0f}% of all products are priced under ₹100. "
                 "Mean (₹270) vs Median (₹79) gap reveals heavy right-skew from specialty drugs.")
@@ -819,6 +1111,7 @@ elif page == "💰 Price Analytics":
         fig.update_layout(height=600, template=TEMPLATE, showlegend=False,
             violingap=0.05, violingroupgap=0,
             margin=dict(t=20,l=140), xaxis_title="Price ₹")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 2: Percentile Bands ───────────────────────────────────────────────
@@ -848,6 +1141,7 @@ elif page == "💰 Price Analytics":
         fig.update_layout(barmode="overlay", height=480, template=TEMPLATE,
             margin=dict(t=20,l=160), xaxis_title="Price ₹",
             legend=dict(orientation="h",y=1.05,x=0.5,xanchor="center"))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 3: Combo Premium ──────────────────────────────────────────────────
@@ -883,6 +1177,7 @@ elif page == "💰 Price Analytics":
             legend=dict(orientation="h",y=1.06,x=0.75,xanchor="center"))
         fig.update_xaxes(title_text="Premium % over single", row=1, col=1)
         fig.update_xaxes(title_text="Median Price ₹", row=1, col=2)
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Diuretics (+385%) and Bronchodilators (+332%) command the highest premiums. "
                 "Combination products are the primary margin-enhancement strategy across all classes.")
@@ -903,6 +1198,7 @@ elif page == "💰 Price Analytics":
         fig.update_traces(marker_size=3, opacity=0.5)
         fig.update_layout(height=520, yaxis_title="Price ₹", xaxis_title="",
             xaxis_tickangle=-20, legend_title="Ingredient Type", margin=dict(t=20))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 5: Outlier Explorer ───────────────────────────────────────────────
@@ -919,6 +1215,7 @@ elif page == "💰 Price Analytics":
             log_x=True, color_discrete_sequence=COLORS, template=TEMPLATE,
             labels={"price_inr":"Price ₹ (log)","dosage_form":"Dosage Form"})
         fig.update_layout(height=560, margin=dict(t=20), legend_title="Therapeutic Class")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 6: Top 20 Expensive Table ────────────────────────────────────────
@@ -961,6 +1258,7 @@ elif page == "💰 Price Analytics":
         fig.update_xaxes(title_text="CV (%)", row=1, col=1)
         fig.update_xaxes(title_text="Price ₹ (log)", type="log", row=1, col=2)
         fig.update_layout(height=560, template=TEMPLATE, margin=dict(t=50,l=10))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Risperidone CV 631% and Cefoperazone 306% — "
                 "massive generic/branded price gaps signal lucrative generic entry opportunities.")
@@ -979,6 +1277,7 @@ elif page == "💰 Price Analytics":
         fig.update_layout(height=540, margin=dict(t=20),
             xaxis_title="Number of Products (competition intensity)",
             yaxis_title="Median Price ₹", legend_title="Class")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 9: Dosage Sunburst ────────────────────────────────────────────────
@@ -998,6 +1297,7 @@ elif page == "💰 Price Analytics":
         fig.update_traces(textinfo="label+percent parent",
             hovertemplate="<b>%{label}</b><br>Products: %{value:,}<br>% parent: %{percentParent:.1%}<extra></extra>")
         fig.update_layout(height=660, margin=dict(t=20))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 10: Dosage × Price Tier Heatmap ──────────────────────────────────
@@ -1013,10 +1313,11 @@ elif page == "💰 Price Analytics":
         fig = go.Figure(data=go.Heatmap(
             z=heat_d.values, x=[str(c) for c in heat_d.columns],
             y=[r.title() for r in heat_d.index],
-            colorscale="Blues", text=heat_d.values,
+            colorscale=[[0,"#0A1829"],[0.3,"#1C4D7A"],[1,"#00B8FF"]], text=heat_d.values,
             texttemplate="%{text:,}", textfont=dict(size=11),
             hovertemplate="<b>%{y} — %{x}</b><br>Products: %{z:,}<extra></extra>"))
         fig.update_layout(height=480, template=TEMPLATE, margin=dict(t=20,l=110))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 11: Manufacturer Price Mix ────────────────────────────────────────
@@ -1045,6 +1346,7 @@ elif page == "💰 Price Analytics":
         fig.update_layout(barmode="stack", height=540, template=TEMPLATE,
             margin=dict(t=20,l=160,r=20), xaxis_title="% of Product Portfolio",
             legend=dict(orientation="h",y=1.06,x=0.5,xanchor="center"))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Dr Reddy's and Emcure have the highest specialty share — "
                 "premium-focused strategy. Mankind and Micro Labs dominate the budget tier.")
@@ -1077,6 +1379,7 @@ elif page == "💰 Price Analytics":
         fig.update_yaxes(title_text="Products", row=1, col=1)
         fig.update_yaxes(title_text="Cumulative %", row=1, col=2)
         fig.update_layout(height=460, template=TEMPLATE, margin=dict(t=50,r=80))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
 
@@ -1147,6 +1450,7 @@ elif page == "🧪 Ingredient Intelligence":
             hovertemplate="<b>%{label}</b><br>Products: %{value:,}<br>Combo: %{color:.1f}%<extra></extra>")
         fig.update_layout(height=620, margin=dict(t=20),
             coloraxis_colorbar=dict(title="Combo %"))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Size = product count | Color: green = mostly solo ingredient, red = mostly used in combos.")
 
@@ -1162,11 +1466,12 @@ elif page == "🧪 Ingredient Intelligence":
             hovertemplate="<b>%{y}</b><br>Products: %{x:,}<extra></extra>"), row=1, col=1)
         fig.add_trace(go.Bar(y=top25["ingredient"], x=top25["manufacturers"],
             orientation="h", marker_color=top25["manufacturers"],
-            marker_colorscale="Blues", showlegend=False,
+            marker_colorscale=[[0,"#0A1829"],[0.3,"#1C4D7A"],[1,"#00B8FF"]], showlegend=False,
             hovertemplate="<b>%{y}</b><br>Manufacturers: %{x:,}<extra></extra>"), row=1, col=2)
         fig.update_xaxes(title_text="Products",      row=1, col=1)
         fig.update_xaxes(title_text="Manufacturers", row=1, col=2)
         fig.update_layout(height=680, template=TEMPLATE, margin=dict(t=50))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("High manufacturer count = commoditised ingredient. Low = differentiated/specialty play.")
 
@@ -1213,6 +1518,7 @@ elif page == "🧪 Ingredient Intelligence":
             xaxis=dict(showgrid=False,zeroline=False,showticklabels=False),
             yaxis=dict(showgrid=False,zeroline=False,showticklabels=False),
             margin=dict(t=20,r=160))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Node size = number of connections. Paracetamol is the highest-centrality node (60 connections).")
 
@@ -1233,6 +1539,7 @@ elif page == "🧪 Ingredient Intelligence":
             hovertemplate="<b>%{y}</b><br>%{x:,} products<extra></extra>"))
         fig.update_layout(height=720, template=TEMPLATE,
             margin=dict(t=20,l=10,r=80), xaxis_title="Number of Products")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Aceclofenac + Paracetamol leads with 6,442 products. "
                 "Amoxycillin + Clavulanic Acid follows at 5,867 — core antibiotic resistance strategy.")
@@ -1252,6 +1559,7 @@ elif page == "🧪 Ingredient Intelligence":
             text=matrix.values, texttemplate="%{text:,}", textfont=dict(size=9)))
         fig.update_layout(height=580, template=TEMPLATE,
             margin=dict(t=20,l=160,b=120), xaxis=dict(tickangle=-35))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 5: Class Diversity Bubble ─────────────────────────────────────────
@@ -1275,6 +1583,7 @@ elif page == "🧪 Ingredient Intelligence":
         fig.update_layout(height=580, margin=dict(t=20),
             xaxis_title="Unique Ingredients", yaxis_title="Total Products",
             coloraxis_colorbar=dict(title="Avg Price ₹"))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Diuretics has only 23 unique ingredients — the least explored class. "
                 "Antibiotics dominate in both ingredient count and product volume.")
@@ -1296,6 +1605,7 @@ elif page == "🧪 Ingredient Intelligence":
                 hovertemplate="<b>%{y}</b><br>%{x:,} products<extra></extra>"),
                 row=row, col=col)
         fig.update_layout(height=1200, template=TEMPLATE, margin=dict(t=60))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 7: Combo Strategy Map ─────────────────────────────────────────────
@@ -1329,6 +1639,7 @@ elif page == "🧪 Ingredient Intelligence":
         fig.update_layout(height=580, margin=dict(t=20),
             xaxis_title="Total Products (log)", yaxis_title="Combination Ratio (%)",
             legend_title="Segment")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 8: Exclusivity ────────────────────────────────────────────────────
@@ -1351,6 +1662,7 @@ elif page == "🧪 Ingredient Intelligence":
         fig.update_xaxes(title_text="Total Products", row=1, col=1)
         fig.update_xaxes(title_text="Total Products", row=1, col=2)
         fig.update_layout(height=560, template=TEMPLATE, margin=dict(t=50))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Clavulanic Acid (8,525 products, 100% combo) is always paired with an antibiotic — "
                 "cannot be marketed standalone. These are pure combo revenue plays.")
@@ -1381,6 +1693,7 @@ elif page == "🧪 Ingredient Intelligence":
             texttemplate="%{text:.2f}", textfont=dict(size=10)))
         fig.update_layout(height=600, template=TEMPLATE,
             margin=dict(t=20,l=160,b=130), xaxis=dict(tickangle=-40))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Sun Pharma ↔ Intas have the highest overlap (0.56 Jaccard) — most direct ingredient competitors. "
                 "Most manufacturers share 40–55% of their portfolios — minimal differentiation.")
@@ -1400,7 +1713,7 @@ elif page == "🧪 Ingredient Intelligence":
         uniq_df = pd.DataFrame(uniq_rows).sort_values("pct_unique")
         fig = go.Figure()
         fig.add_trace(go.Bar(y=uniq_df["manufacturer"], x=uniq_df["shared"],
-            name="Shared with Others", orientation="h", marker_color="#AED6F1",
+            name="Shared with Others", orientation="h", marker_color="#1C4D7A",
             hovertemplate="<b>%{y}</b><br>Shared: %{x:,}<extra></extra>"))
         fig.add_trace(go.Bar(y=uniq_df["manufacturer"], x=uniq_df["unique"],
             name="Unique to Manufacturer", orientation="h", marker_color=ACCENT,
@@ -1413,6 +1726,7 @@ elif page == "🧪 Ingredient Intelligence":
             margin=dict(t=20,r=140),
             xaxis_title="Number of Ingredients",
             legend=dict(orientation="h",y=1.05,x=0.5,xanchor="center"))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 11: Price Variance Map ────────────────────────────────────────────
@@ -1434,6 +1748,7 @@ elif page == "🧪 Ingredient Intelligence":
             annotation_text="CV=100% (high variance)", annotation_position="right")
         fig.update_layout(height=560, margin=dict(t=20),
             xaxis_title="Products (log)", yaxis_title="Price CV%", legend_title="Class")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 12: Median Price Bar ──────────────────────────────────────────────
@@ -1448,6 +1763,7 @@ elif page == "🧪 Ingredient Intelligence":
             hovertemplate="<b>%{y}</b><br>Median: ₹%{x:.2f}<extra></extra>"))
         fig.update_layout(height=700, template=TEMPLATE, margin=dict(t=20,l=10,r=80),
             xaxis_title="Median Product Price ₹", showlegend=False)
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Tab 13: Portfolio Heatmap ─────────────────────────────────────────────
@@ -1466,13 +1782,14 @@ elif page == "🧪 Ingredient Intelligence":
             subplot_titles=["Raw Product Count","Normalised (% of max per manufacturer)"],
             horizontal_spacing=0.08)
         fig.add_trace(go.Heatmap(z=portfolio.values, x=portfolio.columns.tolist(), y=short_m,
-            colorscale="Blues", colorbar=dict(x=0.45,len=0.8),
+            colorscale=[[0,"#0A1829"],[0.3,"#1C4D7A"],[1,"#00B8FF"]], colorbar=dict(x=0.45,len=0.8),
             hovertemplate="<b>%{y}</b> — %{x}<br>%{z:,}<extra></extra>"), row=1, col=1)
         fig.add_trace(go.Heatmap(z=port_norm.values.round(1), x=port_norm.columns.tolist(), y=short_m,
             colorscale="YlOrRd", colorbar=dict(x=1.01,len=0.8),
             hovertemplate="<b>%{y}</b> — %{x}<br>%{z:.1f}%<extra></extra>"), row=1, col=2)
         fig.update_layout(height=460, template=TEMPLATE, margin=dict(t=50,b=120,l=160))
         for c in [1,2]: fig.update_xaxes(tickangle=-40, row=1, col=c)
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Right panel normalised — reveals strategic emphasis regardless of portfolio size. "
                 "Paracetamol and Amoxycillin are universal anchor ingredients across all top manufacturers.")
@@ -1499,6 +1816,7 @@ elif page == "🧪 Ingredient Intelligence":
         fig.update_traces(textinfo="label+percent parent",
             hovertemplate="<b>%{label}</b><br>%{value:,}<br>%{percentParent:.1%}<extra></extra>")
         fig.update_layout(height=680, margin=dict(t=20))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Click any class or ingredient to drill down. "
                 "Green = solo formulations, Red = combination formulations. "
@@ -1542,6 +1860,7 @@ elif page == "🤖 ML: Price Prediction":
         ))
         fig.update_layout(height=420,template=TEMPLATE,margin=dict(t=20,r=80),
                           xaxis_title="Importance (Gini)")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
         insight("Ingredient median price accounts for 84% of importance — commodity pricing of the active ingredient "
                 "is overwhelmingly the strongest price signal.")
@@ -1558,6 +1877,7 @@ elif page == "🤖 ML: Price Prediction":
         fig.add_trace(go.Scatter(x=[0,mx],y=[0,mx],mode="lines",
             line=dict(color="black",dash="dash",width=2),name="Perfect"))
         fig.update_layout(height=500,margin=dict(t=20))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     with tabs[2]:
@@ -1576,6 +1896,7 @@ elif page == "🤖 ML: Price Prediction":
         fig.update_xaxes(title_text="Predicted ₹",row=1,col=1)
         fig.update_yaxes(title_text="Residual ₹",row=1,col=1)
         fig.update_xaxes(title_text="Residual ₹",row=1,col=2)
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
 
 
@@ -1620,6 +1941,7 @@ elif page == "⚠️ ML: Discontinuation Risk":
         fig.update_layout(height=440,template=TEMPLATE,margin=dict(t=40))
         fig.update_xaxes(title_text="FPR",row=1,col=1); fig.update_yaxes(title_text="TPR",row=1,col=1)
         fig.update_xaxes(title_text="Recall",row=1,col=2); fig.update_yaxes(title_text="Precision",row=1,col=2)
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
 
     with tabs[1]:
@@ -1630,11 +1952,12 @@ elif page == "⚠️ ML: Discontinuation Risk":
         with col1:
             fig=go.Figure(go.Heatmap(
                 z=cm,x=["Pred: Active","Pred: Disc"],y=["True: Active","True: Disc"],
-                colorscale=[[0,"#EAF2FF"],[1,ACCENT]],showscale=False,
+                colorscale=[[0,"#0A1829"],[0.4,"#0E3A6E"],[1,"#00B8FF"]],showscale=False,
                 text=[[f"{cm[i,j]:,}<br>({cm_pct[i,j]:.1f}%)" for j in range(2)] for i in range(2)],
                 texttemplate="%{text}",textfont=dict(size=14),hoverinfo="skip"
             ))
             fig.update_layout(height=320,template=TEMPLATE,margin=dict(t=20))
+            _apply_plotly_theme(fig)
             st.plotly_chart(fig,use_container_width=True)
             st.markdown(f"TN={tn:,} | FP={fp:,} | FN={fn:,} | TP={tp:,}")
         with col2:
@@ -1650,6 +1973,7 @@ elif page == "⚠️ ML: Discontinuation Risk":
             fig.update_layout(barmode="group",height=320,template=TEMPLATE,
                 margin=dict(t=20),yaxis_range=[0,1.15],
                 legend=dict(orientation="h",y=1.05))
+            _apply_plotly_theme(fig)
             st.plotly_chart(fig,use_container_width=True)
 
     with tabs[2]:
@@ -1668,6 +1992,7 @@ elif page == "⚠️ ML: Discontinuation Risk":
             text=[f"{v*100:.1f}%" for v in fi["importance"]],textposition="outside"))
         fig.update_layout(height=420,template=TEMPLATE,margin=dict(t=20,r=80),
             xaxis_title="Importance (Gini)")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
         insight("Manufacturer portfolio size (57%) is the #1 predictor — larger manufacturers "
                 "discontinue products more systematically as part of portfolio rationalisation.")
@@ -1714,6 +2039,7 @@ elif page == "🏭 ML: Market Segmentation":
             labels={"pca_x":"PCA 1","pca_y":"PCA 2","cluster_label":"Cluster"})
         fig.update_traces(marker=dict(opacity=0.65))
         fig.update_layout(height=560,margin=dict(t=20))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
 
     with tabs[1]:
@@ -1727,6 +2053,7 @@ elif page == "🏭 ML: Market Segmentation":
         fig.add_vline(x=5,line_dash="dash",line_color=WARN,annotation_text="K=5 selected")
         fig.update_layout(height=400,template=TEMPLATE,margin=dict(t=20),
                           xaxis_title="K",yaxis_title="Inertia")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
 
     with tabs[2]:
@@ -1741,6 +2068,7 @@ elif page == "🏭 ML: Market Segmentation":
                 marker_color=CMAP.get(cname,ACCENT),boxpoints=False))
         fig.update_layout(height=420,template=TEMPLATE,margin=dict(t=20),
                           yaxis_title="Median Price ₹",xaxis_title="")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
 
     with tabs[3]:
@@ -1756,6 +2084,7 @@ elif page == "🏭 ML: Market Segmentation":
                 line_color=color,fillcolor=hex_to_rgba(color,0.15)))
         fig.update_layout(polar=dict(radialaxis=dict(visible=True,range=[0,1])),
             height=520,margin=dict(t=40),legend=dict(x=1.05,y=0.5))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
 
 
@@ -1781,12 +2110,13 @@ elif page == "🏷️ ML: Price Tier Classifier":
         cm_pct=tier_cm/tier_cm.sum(axis=1,keepdims=True)*100
         fig=go.Figure(go.Heatmap(
             z=tier_cm,x=le_t.classes_,y=le_t.classes_,
-            colorscale=[[0,"#EAF2FF"],[1,ACCENT]],showscale=True,
+            colorscale=[[0,"#0A1829"],[0.4,"#0E3A6E"],[1,"#00B8FF"]],showscale=True,
             text=[[f"{tier_cm[i,j]:,}<br>({cm_pct[i,j]:.0f}%)" for j in range(4)] for i in range(4)],
             texttemplate="%{text}",textfont=dict(size=12),hoverinfo="skip"
         ))
         fig.update_layout(height=420,template=TEMPLATE,margin=dict(t=20),
                           xaxis_title="Predicted",yaxis_title="Actual")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
 
     with tabs[1]:
@@ -1802,6 +2132,7 @@ elif page == "🏷️ ML: Price Tier Classifier":
         fig.update_layout(barmode="group",height=420,template=TEMPLATE,
             margin=dict(t=20),yaxis_range=[0,1.15],yaxis_title="Score",
             legend=dict(orientation="h",y=1.05))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
         insight("Specialty tier is best predicted (Precision=0.890) — it has a highly distinct feature profile "
                 "vs Budget/Mid which share fuzzy boundaries around ₹50–₹150.")
@@ -1821,6 +2152,7 @@ elif page == "🏷️ ML: Price Tier Classifier":
             text=[f"{v*100:.1f}%" for v in fi["importance"]],textposition="outside"))
         fig.update_layout(height=420,template=TEMPLATE,margin=dict(t=20,r=80),
                           xaxis_title="Importance (Gini)")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
 
 
@@ -1853,6 +2185,7 @@ elif page == "📈 ML: Demand Scorer":
         ))
         fig.update_layout(height=640,template=TEMPLATE,margin=dict(t=20,r=80),
                           xaxis_title="Demand Proxy Score")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
 
     with tabs[1]:
@@ -1864,6 +2197,7 @@ elif page == "📈 ML: Demand Scorer":
             labels={"demand_score":"Demand Score","median_price":"Median Price ₹ (log)"})
         fig.update_traces(textposition="top center",textfont_size=8)
         fig.update_layout(height=580,margin=dict(t=20))
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
 
     with tabs[2]:
@@ -1877,6 +2211,7 @@ elif page == "📈 ML: Demand Scorer":
         ))
         fig.update_layout(height=400,template=TEMPLATE,margin=dict(t=20,r=80),
                           xaxis_title="Avg Demand Score")
+        _apply_plotly_theme(fig)
         st.plotly_chart(fig,use_container_width=True)
         insight("Antidiabetics and antihypertensives dominate demand scores — "
                 "reflecting chronic disease prevalence, large patient populations, and high competition.")
@@ -1941,6 +2276,7 @@ elif page == "🎯 Model Comparison":
     fig.update_layout(barmode="group",height=480,template=TEMPLATE,
         margin=dict(t=40),yaxis_title="Score",yaxis_range=[0,1.15],
         legend=dict(orientation="h",y=1.06,x=0.5,xanchor="center"))
+    _apply_plotly_theme(fig)
     st.plotly_chart(fig,use_container_width=True)
 
     section("Key Insights")
