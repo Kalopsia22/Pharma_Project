@@ -1923,12 +1923,12 @@ elif page == "🧪 Ingredient Intelligence":
                 x=row["manufacturers"], y=row["cv"],
                 text=row["ingredient"][:18],
                 showarrow=True, arrowhead=0, arrowwidth=1,
-                arrowcolor=f"{color}60",
+                arrowcolor=color,
                 ax=20 if row["manufacturers"] < med_mfr else -20,
                 ay=-18,
                 font=dict(size=8.5, color=color, family="JetBrains Mono"),
-                bgcolor=f"rgba(8,13,20,0.75)",
-                bordercolor=f"{color}40", borderwidth=1,
+                bgcolor="rgba(8,13,20,0.75)",
+                bordercolor=color, borderwidth=1,
                 borderpad=3,
             )
 
