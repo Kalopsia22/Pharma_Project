@@ -830,7 +830,7 @@ elif page == "📊 Market Intelligence":
         for _, row in top20.iterrows():
             fig.add_annotation(x=row["products"]+30, y=row["manufacturer"],
                 text=f"{row['market_share']:.2f}%", showarrow=False,
-                font=dict(size=9, color="#555"))
+                font=dict(size=9, color=C_TEXT2))
         fig.update_layout(barmode="stack", height=620, template=TEMPLATE,
             margin=dict(t=20,r=90),
             legend=dict(orientation="h",y=1.02,x=0.5,xanchor="center"),
@@ -853,8 +853,8 @@ elif page == "📊 Market Intelligence":
             size_max=60, template=TEMPLATE,
             labels={"products":"Portfolio Size","avg_price":"Avg Price ₹","disc_rate":"Disc. Rate %"})
         fig.update_traces(textposition="top center", textfont_size=8)
-        fig.add_vline(x=med_prod,  line_dash="dash", line_color="grey", opacity=0.5)
-        fig.add_hline(y=med_price, line_dash="dash", line_color="grey", opacity=0.5)
+        fig.add_vline(x=med_prod,  line_dash="dash", line_color=C_TEXT3, opacity=0.5)
+        fig.add_hline(y=med_price, line_dash="dash", line_color=C_TEXT3, opacity=0.5)
         for label,xr,yr in [("Volume Leaders",0.85,0.08),("Premium Specialists",0.08,0.92),
                              ("Market Dominators",0.85,0.92),("Niche Players",0.08,0.08)]:
             fig.add_annotation(xref="paper",yref="paper",x=xr,y=yr,text=f"<i>{label}</i>",
@@ -935,9 +935,9 @@ elif page == "📊 Market Intelligence":
                 colorbar=dict(title="Disc. %", x=1.02)),
             hovertemplate="<b>%{text}</b><br>Products: %{x:,}<br>Disc.: %{y:.1f}%<extra></extra>",
             showlegend=False), row=1, col=2)
-        fig.add_hline(y=5,  line_dash="dot", line_color="orange", row=1, col=2,
+        fig.add_hline(y=5,  line_dash="dot", line_color=C_GOLD, row=1, col=2,
             annotation_text="5% threshold")
-        fig.add_hline(y=10, line_dash="dot", line_color="red", row=1, col=2,
+        fig.add_hline(y=10, line_dash="dot", line_color=C_WARN, row=1, col=2,
             annotation_text="10% high risk")
         fig.update_layout(height=680, template=TEMPLATE, margin=dict(t=50,r=80))
         fig.update_xaxes(title_text="Disc. Rate (%)", row=1, col=1)
@@ -962,10 +962,10 @@ elif page == "📊 Market Intelligence":
             fig.add_trace(go.Violin(y=sub, name=mname,
                 box_visible=True, meanline_visible=True,
                 fillcolor=COLORS[i%len(COLORS)], opacity=0.7,
-                line_color="black",
+                line_color=C_BORDER,
                 hovertemplate=f"<b>{mname}</b><br>₹%{{y:.2f}}<extra></extra>"))
         fig.add_hline(y=df_t15["price_inr"].median(), line_dash="dash",
-            line_color="black", opacity=0.5,
+            line_color=C_BORDER, opacity=0.5,
             annotation_text=f"Market Median ₹{df_t15['price_inr'].median():.0f}",
             annotation_position="right")
         fig.update_layout(height=560, template=TEMPLATE,
@@ -1016,7 +1016,7 @@ elif page == "📊 Market Intelligence":
             line=dict(color=ACCENT, width=2.5), name="Actual Concentration",
             hovertemplate="Top %{x:.1f}% → %{y:.1f}% of market<extra></extra>"))
         fig.add_trace(go.Scatter(x=[0,100], y=[0,100], mode="lines",
-            line=dict(color="grey",dash="dash",width=1.5), name="Perfect Equality"))
+            line=dict(color=C_TEXT3,dash="dash",width=1.5), name="Perfect Equality"))
         for pct in [1,5,10]:
             idx = int(len(mfr_sorted)*pct/100)
             cum = mfr_sorted.iloc[min(idx,len(mfr_sorted)-1)]["cum_share"]
@@ -1073,7 +1073,7 @@ elif page == "💰 Price Analytics":
         fig.add_trace(go.Histogram(x=df_plot["price_inr"], nbinsx=80,
             marker_color=ACCENT, opacity=0.8,
             hovertemplate="₹%{x}<br>%{y:,} products<extra></extra>"), row=1, col=1)
-        for pval,plabel,pcolor in [(p25,"P25","green"),(p50,"Median","blue"),(p75,"P75","orange"),(p90,"P90","red")]:
+        for pval,plabel,pcolor in [(p25,"P25",C_ACCENT),(p50,"Median",C_ACCENT2),(p75,"P75",C_GOLD),(p90,"P90",C_WARN)]:
             fig.add_vline(x=pval, line_dash="dash", line_color=pcolor, opacity=0.7, row=1, col=1,
                 annotation_text=f"{plabel} ₹{pval:.0f}", annotation_font_size=9)
         fig.add_trace(go.Scatter(x=sorted_prices, y=ecdf_y, mode="lines",
@@ -1133,7 +1133,7 @@ elif page == "💰 Price Analytics":
             hovertemplate="<b>%{y}</b><br>IQR: ₹%{base:.0f}–₹%{x:.0f}<extra></extra>"))
         fig.add_trace(go.Scatter(y=class_pcts["therapeutic_class"].str.title(),
             x=class_pcts["p50"], mode="markers",
-            marker=dict(symbol="line-ew", size=16, color="white", line=dict(color="black",width=2)),
+            marker=dict(symbol="line-ew", size=16, color=C_BG, line=dict(color=C_BORDER,width=2)),
             name="Median"))
         fig.add_trace(go.Scatter(y=class_pcts["therapeutic_class"].str.title(),
             x=class_pcts["mean"], mode="markers",
@@ -1165,7 +1165,7 @@ elif page == "💰 Price Analytics":
             text=[f"+{v:.0f}%" for v in prem_df["premium_pct"]], textposition="outside",
             showlegend=False,
             hovertemplate="<b>%{y}</b><br>Premium: %{x:+.1f}%<extra></extra>"), row=1, col=1)
-        fig.add_vline(x=0, line_color="black", line_width=1, row=1, col=1)
+        fig.add_vline(x=0, line_color=C_BORDER, line_width=1, row=1, col=1)
         fig.add_trace(go.Bar(name="Single", y=prem_df["class"], x=prem_df["single"],
             orientation="h", marker_color=ACCENT, opacity=0.85,
             hovertemplate="<b>%{y}</b><br>Single: ₹%{x:.1f}<extra></extra>"), row=1, col=2)
@@ -1251,7 +1251,7 @@ elif page == "💰 Price Analytics":
         for _, row in top_rng.iterrows():
             fig.add_trace(go.Scatter(
                 x=[row["min_p"],row["max_p"]], y=[row["primary_ingredient"],row["primary_ingredient"]],
-                mode="lines+markers", line=dict(color="lightgrey",width=2),
+                mode="lines+markers", line=dict(color=C_BORDER,width=2),
                 marker=dict(size=10, color=[OK,WARN]), showlegend=False,
                 hovertemplate=f"<b>{row['primary_ingredient']}</b><br>₹{row['min_p']:.2f}–₹{row['max_p']:,.2f}<extra></extra>"),
                 row=1, col=2)
@@ -1374,7 +1374,7 @@ elif page == "💰 Price Analytics":
             line=dict(color=ACCENT,width=2.5), marker=dict(size=10,color=ACCENT),
             text=[f"{v:.0f}%" for v in cumulative.values],
             textposition="top right", showlegend=False), row=1, col=2)
-        fig.add_hline(y=80, line_dash="dash", line_color="orange", row=1, col=2,
+        fig.add_hline(y=80, line_dash="dash", line_color=C_GOLD, row=1, col=2,
             annotation_text="80% coverage", annotation_position="right")
         fig.update_yaxes(title_text="Products", row=1, col=1)
         fig.update_yaxes(title_text="Cumulative %", row=1, col=2)
@@ -1509,7 +1509,7 @@ elif page == "🧪 Ingredient Intelligence":
                 mode="markers+text", name=cls.title(), text=nodes_c,
                 textposition="top center", textfont=dict(size=8),
                 marker=dict(size=[12+degree.get(nm,0)*3 for nm in nodes_c],
-                    color=ccm2[cls], line=dict(width=1.5,color="white"), opacity=0.9),
+                    color=ccm2[cls], line=dict(width=1.5,color=C_BG), opacity=0.9),
                 hovertext=[f"<b>{nm}</b><br>{cls}<br>Connections: {degree.get(nm,0)}<br>Products: {ingr_freq.get(nm,0):,}" for nm in nodes_c],
                 hoverinfo="text"))
         fig = go.Figure(data=edge_traces+node_traces)
@@ -1628,8 +1628,8 @@ elif page == "🧪 Ingredient Intelligence":
             size="manufacturers", size_max=30, hover_name="ingredient",
             hover_data={"total_products":":,","combo_ratio":":.1f","manufacturers":":,","primary_class":True,"segment":False},
             log_x=True, template=TEMPLATE)
-        fig.add_vline(x=med_freq, line_dash="dash", line_color="grey", opacity=0.5)
-        fig.add_hline(y=med_combo, line_dash="dash", line_color="grey", opacity=0.5)
+        fig.add_vline(x=med_freq, line_dash="dash", line_color=C_TEXT3, opacity=0.5)
+        fig.add_hline(y=med_combo, line_dash="dash", line_color=C_TEXT3, opacity=0.5)
         highlight = ["Paracetamol","Clavulanic Acid","Ornidazole","Azithromycin",
                      "Domperidone","Metformin","Montelukast","Sulbactam"]
         for _, row in combo_a[combo_a["ingredient"].isin(highlight)].iterrows():
@@ -1721,7 +1721,7 @@ elif page == "🧪 Ingredient Intelligence":
         for _, row in uniq_df.iterrows():
             fig.add_annotation(x=row["total"]+5, y=row["manufacturer"],
                 text=f"{row['pct_unique']:.1f}% unique", showarrow=False,
-                font=dict(size=9, color="#555"))
+                font=dict(size=9, color=C_TEXT2))
         fig.update_layout(barmode="stack", height=520, template=TEMPLATE,
             margin=dict(t=20,r=140),
             xaxis_title="Number of Ingredients",
@@ -1744,7 +1744,7 @@ elif page == "🧪 Ingredient Intelligence":
             size_max=35, hover_name="ingredient",
             hover_data={"count":":,","cv":":.1f","min_p":":.2f","max_p":":,.2f","range_ratio":":.0f","manufacturers":":,"},
             log_x=True, color_discrete_sequence=COLORS, template=TEMPLATE)
-        fig.add_hline(y=100, line_dash="dash", line_color="orange", opacity=0.6,
+        fig.add_hline(y=100, line_dash="dash", line_color=C_GOLD, opacity=0.6,
             annotation_text="CV=100% (high variance)", annotation_position="right")
         fig.update_layout(height=560, margin=dict(t=20),
             xaxis_title="Products (log)", yaxis_title="Price CV%", legend_title="Class")
@@ -2065,7 +2065,7 @@ elif page == "🤖 ML: Price Prediction":
         fig.update_traces(marker_size=4)
         mx=res_filt[["actual","predicted"]].max().max()
         fig.add_trace(go.Scatter(x=[0,mx],y=[0,mx],mode="lines",
-            line=dict(color="black",dash="dash",width=2),name="Perfect"))
+            line=dict(color=C_BORDER,dash="dash",width=2),name="Perfect"))
         fig.update_layout(height=500,margin=dict(t=20))
         _apply_plotly_theme(fig)
         st.plotly_chart(fig, use_container_width=True)
@@ -2118,7 +2118,7 @@ elif page == "⚠️ ML: Discontinuation Risk":
             f"ROC Curve (AUC={M['auc_d']:.4f})","Precision-Recall Curve"])
         fig.add_trace(go.Scatter(x=fpr,y=tpr,mode="lines",name=f"AUC={M['auc_d']:.3f}",
             line=dict(color=ACCENT,width=2.5),fill="tozeroy",fillcolor=hex_to_rgba(ACCENT,0.15)),row=1,col=1)
-        fig.add_trace(go.Scatter(x=[0,1],y=[0,1],mode="lines",line=dict(color="grey",dash="dash"),
+        fig.add_trace(go.Scatter(x=[0,1],y=[0,1],mode="lines",line=dict(color=C_TEXT3,dash="dash"),
             name="Random"),row=1,col=1)
         j=tpr-fpr; oi=np.argmax(j)
         fig.add_trace(go.Scatter(x=[fpr[oi]],y=[tpr[oi]],mode="markers",
@@ -2126,7 +2126,7 @@ elif page == "⚠️ ML: Discontinuation Risk":
         fig.add_trace(go.Scatter(x=pr_r,y=pr_p,mode="lines",name="P-R Curve",
             line=dict(color=OK,width=2.5),fill="tozeroy",fillcolor=hex_to_rgba(OK,0.15)),row=1,col=2)
         bl=df["is_discontinued"].mean()
-        fig.add_hline(y=bl,line_dash="dash",line_color="grey",row=1,col=2,
+        fig.add_hline(y=bl,line_dash="dash",line_color=C_TEXT3,row=1,col=2,
             annotation_text=f"Baseline ({bl:.3f})")
         fig.update_layout(height=440,template=TEMPLATE,margin=dict(t=40))
         fig.update_xaxes(title_text="FPR",row=1,col=1); fig.update_yaxes(title_text="TPR",row=1,col=1)
@@ -2461,7 +2461,7 @@ elif page == "🎯 Model Comparison":
     for metric,color in [("Accuracy",ACCENT),("Precision",OK),("Recall",WARN)]:
         fig.add_trace(go.Bar(x=cross["Model"],y=cross[metric],name=metric,marker_color=color,
             text=[f"{v:.3f}" for v in cross[metric]],textposition="outside"))
-    fig.add_hline(y=0.75,line_dash="dash",line_color="grey",opacity=0.5,
+    fig.add_hline(y=0.75,line_dash="dash",line_color=C_TEXT3,opacity=0.5,
                   annotation_text="0.75",annotation_position="right")
     fig.update_layout(barmode="group",height=480,template=TEMPLATE,
         margin=dict(t=40),yaxis_title="Score",yaxis_range=[0,1.15],
