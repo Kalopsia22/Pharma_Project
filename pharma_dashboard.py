@@ -1433,7 +1433,7 @@ elif page == "🧪 Ingredient Intelligence":
         "Top 8 per Class","Combo Strategy Map","Exclusivity Analysis",
         "Jaccard Overlap","Portfolio Differentiation",
         "Price Variance Map","Median Price by Ingredient",
-        "Portfolio Heatmap","Ingredient Sunburst"
+        "Portfolio Heatmap","Pricing Power Matrix"
     ])
 
     # ── Tab 0: Treemap ────────────────────────────────────────────────────────
@@ -1794,33 +1794,223 @@ elif page == "🧪 Ingredient Intelligence":
         insight("Right panel normalised — reveals strategic emphasis regardless of portfolio size. "
                 "Paracetamol and Amoxycillin are universal anchor ingredients across all top manufacturers.")
 
-    # ── Tab 14: Ingredient Sunburst ───────────────────────────────────────────
+    # ── Tab 14: Pricing Power & Competitive Moat Matrix ──────────────────────
     with tabs[14]:
-        section("Ingredient Universe: Class → Ingredient → Solo / Combo Split")
-        cls_sun = ["antibiotic","analgesic","antacid","antihistamine",
-                   "antidiabetic","antihypertensive","antidepressant","bronchodilator"]
-        top_sun = ingr_stats[(ingr_stats["total_products"]>=500) &
-                              ingr_stats["primary_class"].isin(cls_sun)].copy()
-        sun_rows = []
-        for _,row in top_sun.iterrows():
-            if row["solo_products"]>0:
-                sun_rows.append({"class":row["primary_class"].title(),
-                    "ingredient":row["ingredient"],"type":"Solo","count":int(row["solo_products"])})
-            if row["combo_products"]>0:
-                sun_rows.append({"class":row["primary_class"].title(),
-                    "ingredient":row["ingredient"],"type":"Combo","count":int(row["combo_products"])})
-        sun_df = pd.DataFrame(sun_rows)
-        fig = px.sunburst(sun_df, path=["class","ingredient","type"],
-            values="count", color="type",
-            color_discrete_map={"Solo":OK,"Combo":WARN}, template=TEMPLATE)
-        fig.update_traces(textinfo="label+percent parent",
-            hovertemplate="<b>%{label}</b><br>%{value:,}<br>%{percentParent:.1%}<extra></extra>")
-        fig.update_layout(height=680, margin=dict(t=20))
-        _apply_plotly_theme(fig)
-        st.plotly_chart(fig, use_container_width=True)
-        insight("Click any class or ingredient to drill down. "
-                "Green = solo formulations, Red = combination formulations. "
-                "Clavulanic Acid appears entirely in red — no solo products exist.")
+        section("Pricing Power & Competitive Moat Matrix")
+
+        # Build enriched dataset: manufacturer count vs price CV for each ingredient
+        ingr_moat = df_exp.groupby("ingredient").agg(
+            total_products  = ("product_id",   "count"),
+            manufacturers   = ("manufacturer", "nunique"),
+            median_price    = ("price_inr",    "median"),
+            std_price       = ("price_inr",    "std"),
+            min_price       = ("price_inr",    "min"),
+            max_price       = ("price_inr",    "max"),
+            combo_ratio     = ("num_active_ingredients", lambda x: (x>1).mean()*100),
+            disc_rate       = ("is_discontinued", "mean"),
+        ).reset_index()
+
+        ingr_moat = ingr_moat[ingr_moat["total_products"] >= 50].copy()
+        ingr_moat["cv"]          = (ingr_moat["std_price"] / ingr_moat["median_price"].replace(0,np.nan) * 100).round(1)
+        ingr_moat["range_ratio"] = (ingr_moat["max_price"] / ingr_moat["min_price"].replace(0,np.nan)).round(1)
+        ingr_moat = ingr_moat[ingr_moat["cv"].notna() & (ingr_moat["cv"] < 600)].copy()
+        ingr_moat = ingr_moat.merge(
+            ingr_stats[["ingredient","primary_class"]], on="ingredient", how="left")
+
+        # Quadrant thresholds (medians)
+        med_mfr = ingr_moat["manufacturers"].median()
+        med_cv  = ingr_moat["cv"].median()
+
+        def moat_quadrant(row):
+            hi_mfr = row["manufacturers"] >= med_mfr
+            hi_cv  = row["cv"]            >= med_cv
+            if   not hi_mfr and hi_cv:  return "🏰 Pricing Moat"
+            elif not hi_mfr and not hi_cv: return "💎 Niche Stable"
+            elif hi_mfr and hi_cv:       return "⚡ Volatile Commodity"
+            else:                        return "📦 True Commodity"
+
+        ingr_moat["quadrant"] = ingr_moat.apply(moat_quadrant, axis=1)
+
+        QUAD_COLORS = {
+            "🏰 Pricing Moat":       C_ACCENT,    # green  — high moat
+            "💎 Niche Stable":       C_ACCENT2,   # blue   — protected niche
+            "⚡ Volatile Commodity": C_WARN,      # red    — high competition + chaos
+            "📦 True Commodity":     C_TEXT3,     # muted  — commoditised
+        }
+
+        # ── KPI row ───────────────────────────────────────────────────────────
+        q_counts = ingr_moat["quadrant"].value_counts()
+        ck1,ck2,ck3,ck4 = st.columns(4)
+        for col_obj, (qname, style) in zip([ck1,ck2,ck3,ck4],[
+            ("🏰 Pricing Moat",       "ok"),
+            ("💎 Niche Stable",       "default"),
+            ("⚡ Volatile Commodity", "warn"),
+            ("📦 True Commodity",     "gold"),
+        ]):
+            with col_obj:
+                kpi(qname, q_counts.get(qname, 0), style, "{:,}")
+
+        # ── Scatter ───────────────────────────────────────────────────────────
+        fig_moat = go.Figure()
+
+        # Quadrant shading
+        x_range = [ingr_moat["manufacturers"].min()*0.8, ingr_moat["manufacturers"].max()*1.2]
+        y_range = [ingr_moat["cv"].min()*0.8, ingr_moat["cv"].max()*1.1]
+
+        # Shade quadrants
+        shade_configs = [
+            (x_range[0], med_mfr, med_cv, y_range[1], C_ACCENT,   0.04, "🏰 Pricing Moat"),
+            (x_range[0], med_mfr, y_range[0], med_cv,  C_ACCENT2,  0.04, "💎 Niche Stable"),
+            (med_mfr, x_range[1], med_cv, y_range[1],  C_WARN,     0.04, "⚡ Volatile Commodity"),
+            (med_mfr, x_range[1], y_range[0], med_cv,  C_TEXT3,    0.03, "📦 True Commodity"),
+        ]
+        for x0, x1, y0, y1, color, alpha, label in shade_configs:
+            r,g,b = [int(color.lstrip("#")[i:i+2],16) for i in (0,2,4)]
+            fig_moat.add_shape(type="rect",
+                x0=x0, x1=x1, y0=y0, y1=y1,
+                fillcolor=f"rgba({r},{g},{b},{alpha})",
+                line_width=0, layer="below")
+
+        # Divider lines
+        fig_moat.add_vline(x=med_mfr, line_dash="dot", line_color=C_BORDER,
+            line_width=1.5, opacity=0.8)
+        fig_moat.add_hline(y=med_cv,  line_dash="dot", line_color=C_BORDER,
+            line_width=1.5, opacity=0.8)
+
+        # Plot each quadrant as a trace for legend
+        for quad, color in QUAD_COLORS.items():
+            sub = ingr_moat[ingr_moat["quadrant"] == quad]
+            if sub.empty: continue
+            fig_moat.add_trace(go.Scatter(
+                x=sub["manufacturers"], y=sub["cv"],
+                mode="markers",
+                name=quad,
+                marker=dict(
+                    size=np.sqrt(sub["total_products"]).clip(5, 28),
+                    color=color,
+                    opacity=0.75,
+                    line=dict(width=0.8, color=C_BG),
+                ),
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    "Manufacturers: %{x:,}<br>"
+                    "Price CV: %{y:.1f}%<br>"
+                    "Products: %{customdata[1]:,}<br>"
+                    "Median ₹: %{customdata[2]:.0f}<br>"
+                    "Range: ₹%{customdata[3]:.0f}–₹%{customdata[4]:,.0f}<br>"
+                    "Class: %{customdata[5]}<extra></extra>"
+                ),
+                customdata=np.column_stack([
+                    sub["ingredient"],
+                    sub["total_products"],
+                    sub["median_price"],
+                    sub["min_price"],
+                    sub["max_price"],
+                    sub["primary_class"].fillna("other"),
+                ]),
+            ))
+
+        # Label top 12 most interesting ingredients (high moat + highest CV moat)
+        top_label = pd.concat([
+            ingr_moat[ingr_moat["quadrant"]=="🏰 Pricing Moat"].nlargest(6, "cv"),
+            ingr_moat[ingr_moat["quadrant"]=="💎 Niche Stable"].nlargest(3, "median_price"),
+            ingr_moat[ingr_moat["quadrant"]=="⚡ Volatile Commodity"].nlargest(3, "total_products"),
+        ]).drop_duplicates("ingredient")
+
+        for _, row in top_label.iterrows():
+            color = QUAD_COLORS.get(row["quadrant"], C_TEXT2)
+            fig_moat.add_annotation(
+                x=row["manufacturers"], y=row["cv"],
+                text=row["ingredient"][:18],
+                showarrow=True, arrowhead=0, arrowwidth=1,
+                arrowcolor=f"{color}60",
+                ax=20 if row["manufacturers"] < med_mfr else -20,
+                ay=-18,
+                font=dict(size=8.5, color=color, family="JetBrains Mono"),
+                bgcolor=f"rgba(8,13,20,0.75)",
+                bordercolor=f"{color}40", borderwidth=1,
+                borderpad=3,
+            )
+
+        # Quadrant labels
+        label_positions = [
+            (x_range[0]*1.05, y_range[1]*0.96, "🏰 PRICING MOAT",       C_ACCENT,  "left"),
+            (x_range[0]*1.05, y_range[0]*1.08, "💎 NICHE STABLE",        C_ACCENT2, "left"),
+            (x_range[1]*0.96, y_range[1]*0.96, "⚡ VOLATILE COMMODITY",  C_WARN,    "right"),
+            (x_range[1]*0.96, y_range[0]*1.08, "📦 TRUE COMMODITY",      C_TEXT3,   "right"),
+        ]
+        for lx, ly, ltext, lcolor, anchor in label_positions:
+            fig_moat.add_annotation(
+                x=lx, y=ly, text=ltext, showarrow=False,
+                font=dict(size=9, color=lcolor, family="Outfit"),
+                xanchor=anchor, opacity=0.6,
+            )
+
+        _apply_plotly_theme(fig_moat, height=620)
+        fig_moat.update_layout(
+            xaxis=dict(title="Number of Manufacturers (competition intensity)",
+                       showgrid=True, gridcolor=C_BORDER),
+            yaxis=dict(title="Price CV% (pricing power / variance)",
+                       showgrid=True, gridcolor=C_BORDER),
+            legend=dict(orientation="h", y=1.06, x=0.5, xanchor="center",
+                        font=dict(size=11)),
+            hovermode="closest",
+            margin=dict(t=30, b=50, l=70, r=30),
+        )
+        st.plotly_chart(fig_moat, use_container_width=True)
+
+        # ── Quadrant breakdown table ───────────────────────────────────────────
+        section("Quadrant Breakdown — Top Ingredients per Segment")
+        tcol1, tcol2 = st.columns(2)
+        for col_obj, (quad, color) in zip([tcol1, tcol2], [
+            ("🏰 Pricing Moat",   C_ACCENT),
+            ("💎 Niche Stable",   C_ACCENT2),
+        ]):
+            sub = ingr_moat[ingr_moat["quadrant"]==quad].nlargest(8, "cv")[
+                ["ingredient","manufacturers","median_price","cv","total_products","primary_class"]
+            ].rename(columns={
+                "ingredient":"Ingredient","manufacturers":"Mfr #",
+                "median_price":"Med ₹","cv":"CV%",
+                "total_products":"Products","primary_class":"Class"
+            }).reset_index(drop=True)
+            sub["Med ₹"] = sub["Med ₹"].round(0).astype(int)
+            sub["CV%"]   = sub["CV%"].round(1)
+            with col_obj:
+                st.markdown(f"<div style='font-size:0.8rem;font-weight:700;"
+                    f"color:{color};margin-bottom:6px;'>{quad}</div>",
+                    unsafe_allow_html=True)
+                st.dataframe(sub, use_container_width=True,
+                    hide_index=True, height=280)
+
+        tcol3, tcol4 = st.columns(2)
+        for col_obj, (quad, color) in zip([tcol3, tcol4], [
+            ("⚡ Volatile Commodity", C_WARN),
+            ("📦 True Commodity",     C_TEXT2),
+        ]):
+            sub = ingr_moat[ingr_moat["quadrant"]==quad].nlargest(8, "total_products")[
+                ["ingredient","manufacturers","median_price","cv","total_products","primary_class"]
+            ].rename(columns={
+                "ingredient":"Ingredient","manufacturers":"Mfr #",
+                "median_price":"Med ₹","cv":"CV%",
+                "total_products":"Products","primary_class":"Class"
+            }).reset_index(drop=True)
+            sub["Med ₹"] = sub["Med ₹"].round(0).astype(int)
+            sub["CV%"]   = sub["CV%"].round(1)
+            with col_obj:
+                st.markdown(f"<div style='font-size:0.8rem;font-weight:700;"
+                    f"color:{color};margin-bottom:6px;'>{quad}</div>",
+                    unsafe_allow_html=True)
+                st.dataframe(sub, use_container_width=True,
+                    hide_index=True, height=280)
+
+        insight(
+            "X-axis = manufacturer count (competition). Y-axis = price CV% (variance = pricing power). "
+            "Bubble size = product count. "
+            "<b style='color:" + C_ACCENT  + "'>Pricing Moat</b>: few competitors, high price variance — strong margins. "
+            "<b style='color:" + C_ACCENT2 + "'>Niche Stable</b>: few competitors, stable price — protected niche. "
+            "<b style='color:" + C_WARN    + "'>Volatile Commodity</b>: many competitors, high variance — price war. "
+            "<b style='color:" + C_TEXT3   + "'>True Commodity</b>: many competitors, low variance — race to the bottom."
+        )
 
 
 
